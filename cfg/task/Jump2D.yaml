@@ -4,7 +4,7 @@ name: Olympus
 physics_engine: ${..physics_engine}
 
 env:
-  numEnvs: ${resolve_default:16,${...num_envs}} #  16, 128, 1280, 2048
+  numEnvs: ${resolve_default:16,${...num_envs}} # 16, 128, 1280, 2048
   envSpacing: 4.  # [m]
 
   clipObservations: 5.0
@@ -50,8 +50,8 @@ env:
   # Joint limits
   jointLimits:
     lateralMotor              : [-10, 200]  # [deg]
-    transversalMotor          : [-60, 180]  # [deg]
-    minTransversalMotorSum   : -10         # [deg]
+    transversalMotor          : [-50, 180]  # [deg]
+    minTransversalMotorSum   : 10         # [deg]
     maxTransversalMotorSum   : 220          # [deg]
 
   learn:
@@ -62,10 +62,10 @@ env:
     rBaseAccRewardScale: 0.01
     rActionClipRewardScale: 0.33
     rTorqueClipRewardScale: 0.33
-    rMaxHeightRewardScale: 10000
+    rMaxHeightRewardScale: 100
 
     # episode length in seconds
-    episodeLength_s: 1
+    episodeLength_s: 0.5
 
 sim:
   dt: 0.00208
@@ -74,7 +74,7 @@ sim:
   add_ground_plane: True
   use_flatcache: True
   enable_scene_query_support: False
-  disable_contact_processing: False
+  disable_contact_processing: True
 
   # set to True if you use camera sensors in the environment
   enable_cameras: False

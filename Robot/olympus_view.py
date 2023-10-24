@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import time
+
 from typing import Optional
 import torch
 from torch import Tensor
@@ -39,8 +41,8 @@ class OlympusView(ArticulationView):
         self,
         prim_paths_expr: str,
         name: Optional[str] = "OlympusView",
-        track_contact_forces=False,
-        prepare_contact_sensors=False,
+        track_contact_forces=True,
+        prepare_contact_sensors=True,
     ) -> None:
         """[summary]"""
 
@@ -235,6 +237,7 @@ class OlympusView(ArticulationView):
         )
 
         self.rigid_prims = [
+            self._base,
             self.MotorHousing_FL,
             self.FrontMotor_FL,
             self.BackMotor_FL,
@@ -262,6 +265,7 @@ class OlympusView(ArticulationView):
         ]
         self._paws = [self.Paw_FL, self.Paw_FR,self.Paw_BL, self.Paw_BR]
 
+
     def get_knee_transforms(self):
         return self._knees.get_world_poses()
 
@@ -282,7 +286,20 @@ class OlympusView(ArticulationView):
     
     def get_contact_state(self) -> Tensor:
         cotact_state = torch.cat(
-            [torch.any(paw.get_net_contact_forces(clone=False).abs() > 1e-5,dim=-1).float() for paw in self._paws],
+            [torch.any(paw.get_net_contact_forces(clone=False).abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
             dim=-1
         )
         return cotact_state
+    
+    def has_fallen(self) -> Tensor:
+        #base_pos, _ = self.get_world_poses()
+        #base_heights = base_pos[:, 2]
+        #return base_heights[:] < 0.19
+        fallen_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
+        for rigid_prim in self.rigid_prims:
+            if "Paw" in rigid_prim.name:
+                continue
+            forces: Tensor = rigid_prim.get_net_contact_forces(clone=False)
+            prim_in_collision = (forces.abs() > 1e-5).any(dim=-1)
+            fallen_buf = fallen_buf.logical_or(prim_in_collision)
+        return fallen_buf
