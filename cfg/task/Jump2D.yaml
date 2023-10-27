@@ -7,14 +7,14 @@ env:
   numEnvs: ${resolve_default:16,${...num_envs}} # 16, 128, 1280, 2048
   envSpacing: 4.  # [m]
 
-  clipObservations: 5.0
-  clipActions: 1.0
+  clipObservations: 10.0
+  clipActions: 10000.0
 
   controlFrequencyInv: 4 #old 2
 
   baseInitState:
     pos: [0.0, 0.0, 0.52] # x,y,z [m]
-    rot: [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
+    rot: [1.0, 0.0, 0.0, 0] # x,y,z,w [quat]
     vLinear: [0.0, 0.0, 0.0]  # x,y,z [m/s]
     vAngular: [0.0, 0.0, 0.0]  # x,y,z [rad/s]
 
@@ -59,13 +59,15 @@ env:
     rewardScale: 0.005
     rJumpRewardScale: 1
     rOrientRewardScale: 1
-    rBaseAccRewardScale: 0.01
-    rActionClipRewardScale: 0.33
-    rTorqueClipRewardScale: 0.33
-    rMaxHeightRewardScale: 100
-
+    rBaseAccRewardScale: 0.001
+    rActionClipRewardScale: 0.033
+    rTorqueClipRewardScale: 0.033
+    rMaxHeightRewardScale: 10000.0
+    rAccendRewardScale: 2.0
+    rPosTrackingRewardScale: 1.0
+    rSquatRewardScale: 3.0
     # episode length in seconds
-    episodeLength_s: 0.5
+    episodeLength_s: 5.0
 
 sim:
   dt: 0.00208

@@ -55,7 +55,6 @@ class OlympusSpringJIT:
             device=self.olympus_view._device,
         )
         self.batched_indicies = self.indicies.tile((self._num_envs, 1))
-        self._compute_taus_jit = torch.jit.script(_compute_taus)
 
     def forward(self) -> ArticulationAction:
         """
@@ -69,7 +68,7 @@ class OlympusSpringJIT:
         back_knee_pos = self._get_back_knees_pos()
         front_motor_joint_pos = self._get_front_motors_joint_pos()
         back_motor_joint_pos = self._get_back_motors_joint_pos()
-        joint_efforts = self._compute_taus_jit(
+        joint_efforts = _compute_taus(
             motor_housing_rot,
             front_motor_pos,
             front_knee_pos,
@@ -130,7 +129,7 @@ class OlympusSpringJIT:
         joint_pos = self.olympus_view.get_joint_positions(joint_indices=self.back_motors_joint_indices, clone=True)
         return joint_pos.T.flatten()
     
-
+@torch.jit.script
 def _get_action_both_normal(
         front_motor_pos: Tensor,
         back_motor_pos: Tensor,
@@ -154,6 +153,7 @@ def _get_action_both_normal(
         actions[mask] =torch.stack([tau_front, tau_back], dim=1)
         return actions
 
+@torch.jit.script
 def _get_action_both_inverted(
     front_motor_pos: Tensor,
     back_motor_pos: Tensor,
@@ -176,6 +176,7 @@ def _get_action_both_inverted(
     tau = -k * s * r_pulley
     return torch.stack([tau, tau], dim=1)
 
+@torch.jit.script
 def _get_action_front_normal_back_inverted(
     front_motor_pos: Tensor,
     back_motor_pos: Tensor,
@@ -208,6 +209,7 @@ def _get_action_front_normal_back_inverted(
     tau_front = -k * s * torch.sin(angle_1 + angle_2)
     return torch.concatenate([tau_front.reshape(-1, 1), tau_back.reshape(-1, 1)], dim=1)
 
+@torch.jit.script
 def _get_action_front_inverted_back_normal(
     front_motor_pos: Tensor,
     back_motor_pos: Tensor,
@@ -242,6 +244,7 @@ def _get_action_front_inverted_back_normal(
 
     return torch.concatenate([tau_front.reshape(-1, 1), tau_back.reshape(-1, 1)], dim=1)
 
+@torch.jit.script
 def get_mode(
         motor_housing_rot: Tensor,
         front_motor_pos: Tensor,
@@ -279,8 +282,7 @@ def get_mode(
     
     return modes.view(-1)
 
-
-
+@torch.jit.script
 def _compute_taus(
     motor_housing_rot: Tensor,
     front_motor_pos: Tensor,

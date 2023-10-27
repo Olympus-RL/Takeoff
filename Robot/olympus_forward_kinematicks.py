@@ -45,13 +45,13 @@ class OlympusForwardKinematics(torch.jit.ScriptModule):
         front_knee_mhf = self._front_motor_mhf + self._transform_point(rot_fmf, self._front_knee_fmf)
         back_knee_mhf = self._back_motor_mhf + self._transform_point(rot_bmf, self._back_knee_bmf)
 
-        q_fk = 1.2 * q_front.clone()
+        q_fk = 1.2 * q_front.clone() #this is a good initial guess
         q_bk = 1.2 * q_back.clone()
         diff = torch.zeros(q_front.shape[0], 2, device=self._device)
         paw_attachment_mhf_0 = torch.zeros_like(front_knee_mhf)
         paw_attachment_mhf_1 = torch.zeros_like(back_knee_mhf)
-
-        for _ in range(300):
+        #for speed we only do 5 iterations with a stepsize of 1, testing shows that this is sufficient
+        for _ in range(5):
             rot_fkf = self._rotation_matrix_y(-q_front + self._fkf_init + q_fk)
             rot_bkf = self._rotation_matrix_y(q_back + self._bkf_init - q_bk)
             paw_attachment_mhf_0 = front_knee_mhf + self._transform_point(rot_fkf, self._paw_attachment_fkf)
@@ -60,7 +60,7 @@ class OlympusForwardKinematics(torch.jit.ScriptModule):
             J = torch.zeros((q_fk.shape[0], 2, 2), device=self._device)
             J[:, :, 0] = self._jacobian_rotation_y(-q_front + self._fkf_init + q_fk, self._paw_attachment_fkf)[:, [0, 2]]
             J[:, :, 1] = self._jacobian_rotation_y(q_back + self._bkf_init - q_bk, self._paw_attachment_bkf)[:, [0, 2]]
-            delta_q = -0.3 * torch.linalg.lstsq(J, diff)[0].detach().requires_grad_(False)
+            delta_q = -1 * torch.linalg.lstsq(J, diff)[0].detach().requires_grad_(False)
             q_fk += delta_q[:, 0]
             q_bk += delta_q[:, 1]
         #print(diff.norm(p=2,dim=-1).max())
@@ -96,9 +96,9 @@ if __name__ == "__main__":
     device = "cuda:0"
     torch.manual_seed(42)
     fk = OlympusForwardKinematics(device)
-    #u = torch.distributions.Uniform(torch.zeros(16, device=device), 120 * torch.pi / 180 * torch.ones(16, device=device))
-    #q = u.sample()
-    q = 120*torch.ones(16, device=device).deg2rad()
+    u = torch.distributions.Uniform(torch.zeros(10000, device=device), 120 * torch.pi / 180 * torch.ones(10000, device=device))
+    q = u.sample()
+    q = 90*torch.ones(16, device=device).deg2rad()
     k_outer, k_inner, h = fk.get_squat_configuration(q)
     print(k_outer[0].rad2deg(), k_inner[0].rad2deg(), h[0])
     print(torch.any(k_inner < 0))
