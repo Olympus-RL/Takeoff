@@ -55,7 +55,7 @@ class Jump2DTask(RLTask):
         self._step_dt = self.dt * self._controlFrequencyInv
         self._memory_lenght = 1
         self.max_episode_length_s = self._task_cfg["env"]["learn"]["episodeLength_s"]
-        self._max_time_after_landing = 5.0 #seconds
+        self._max_time_after_landing = 1.0 #seconds
         self.max_episode_length = int(self.max_episode_length_s / (self.dt * self._controlFrequencyInv) + 0.5)
         self.Kp = self._task_cfg["env"]["control"]["stiffness"]
         self.Kd = self._task_cfg["env"]["control"]["damping"]
@@ -191,13 +191,13 @@ class Jump2DTask(RLTask):
         base_velocities = self._olympusses.get_velocities(clone=False)
         base_position, base_rotation = self._olympusses.get_world_poses(clone=False)
         height = base_position[:, -1]
-        contact_states = self._olympusses.get_contact_state()
-        is_airborne = torch.all(contact_states == 0, dim=1)
+        self._contact_states = self._olympusses.get_contact_state()
+        is_airborne = torch.all(self._contact_states == 0, dim=1)
         is_stance =torch.logical_and(~is_airborne,self._stage_buf==0) 
         is_flying = torch.logical_and(is_airborne,self._stage_buf!=2) #cannot go back from landed to airborn
         is_landed = torch.logical_and(~is_flying,~is_stance)
         self._just_landed_buf = torch.logical_and(is_landed, self._stage_buf==1)
-        self._is_initilized_buf[torch.all(contact_states == 1, dim=1)] = True
+        self._is_initilized_buf[torch.all(self._contact_states == 1, dim=1)] = True
         #update stage buf 
         self._stage_buf[is_stance] = 0
         self._stage_buf[is_flying] = 1
@@ -251,24 +251,10 @@ class Jump2DTask(RLTask):
         please see the apply_contol method.
         """
 
-        # Check if simulation is running
-        #if not self._env._world.is_playing():
-        #    return
-
-        # calculate spring torques
-        #self._olympusses.set_joint_efforts(self._spring_actions.joint_efforts, joint_indices=self._actuated_indicies)
-        if self._spring_step_count % self._springFrequencyInv == 0:
-            self._spring_actions = self.spring.forward()
-            self._spring_step_count = 0
-        self._spring_step_count += 1
-        # Handle resets
-        self._spring_actions = self.spring.forward()
-        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(reset_env_ids) > 0:
-            self.reset_idx(reset_env_ids)
-            self._spring_actions.joint_efforts[reset_env_ids,:] = 0.0
-        self._olympusses.apply_action(self._spring_actions)
-
+        #reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        #if len(reset_env_ids) > 0:
+        #    self.reset_idx(reset_env_ids)
+        return
     def post_physics_step(self):
         """Processes RL required computations for observations, states, rewards, resets, and extras.
             Also maintains progress buffer for tracking step count per environment.
@@ -297,6 +283,10 @@ class Jump2DTask(RLTask):
         Args:
         actions: Tensor of shape (num_envs,4)
         """
+
+        reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(reset_env_ids) > 0:
+            self.reset_idx(reset_env_ids)
         # extend the actions
         # expand points to same place in memeory. might be goofy
         extended_actions = torch.zeros((self._num_envs, 12), device=self._device)
@@ -327,7 +317,7 @@ class Jump2DTask(RLTask):
         root_vel = torch.zeros((num_resets, 6), device=self._device)
         
         #if we are in training mode we sample random initial state
-        if not self._is_test:
+        if self._is_test:
             #sample squat angle
             squat_angles = self._init_squat_angle_sampler.rsample((num_resets,))
             k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
@@ -425,6 +415,7 @@ class Jump2DTask(RLTask):
         self._is_initilized_buf =  torch.zeros(self._num_envs, dtype=torch.bool, device=self._device) #after restet wait until the agent is still on the ground befoe appllying actions
         self._init_dof_pos_buf = torch.zeros((self._num_envs, self._num_articulated_joints), dtype=torch.float, device=self._device)
         self.obs_buf = torch.zeros((self._num_envs, self._num_observations), dtype=torch.float, device=self._device)
+        self._last_contact_state = torch.zeros((self._num_envs, 4), dtype=torch.float, device=self._device)
         # reset all envs
         indices = torch.arange(self._olympusses.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -438,7 +429,7 @@ class Jump2DTask(RLTask):
         ### Task Rewards ###
         # rew_{position_tracking}
         offset = base_position - self.initial_root_pos
-        rew_pos_tracking = -torch.norm(offset[:,:2], dim=1)**2 *1000 #self.rew_scales["r_pos_tracking"]
+        rew_pos_tracking = torch.exp(-torch.sum(offset[:,:2]**2, dim=1)) #self.rew_scales["r_pos_tracking"]
         rew_pos_tracking[self._stage_buf!=2] = 0.0  # only give position tracking reward when landing
 
         # rew_{orient}
@@ -449,16 +440,16 @@ class Jump2DTask(RLTask):
         rew_max_height[~self._just_landed_buf] = 0.0  # only give max height reward when landing
 
         # rew_{accend}
-        rew_accend = velocity[:,2].clamp(min=0.0)*self._step_dt * 1000#self.rew_scales["r_accend"]*10
+        rew_accend = velocity[:,2].clamp(min=0.0)*self._step_dt * 100#self.rew_scales["r_accend"]*10
         rew_accend[self._stage_buf!=1] = 0.0  # only give accend reward when flying
 
         # rew_{squat}
-        rew_squat = torch.exp(-((base_position[:,2]-0.20)/0.015)**2) *200 #self.rew_scales["r_squat"]*10
+        rew_squat = torch.exp(-((base_position[:,2]-0.20)/0.02)**2) *30 #self.rew_scales["r_squat"]*10
         rew_squat[self._stage_buf!=0] = 0  # only give squat reward when stance
 
         ### Regualization Rewards ###
-        rew_joint_acc = -torch.sum(((motor_joint_vel - self.last_motor_joint_vel) / self._step_dt)**2, dim=1) * 0.00000001# self.rew_scales["r_joint_acc"]
-
+        rew_joint_acc = -torch.sum(((motor_joint_vel - self.last_motor_joint_vel) / self._step_dt)**2, dim=1) * 0.0000001# self.rew_scales["r_joint_acc"]
+        rew_stepping = -torch.norm(self._contact_states-self._last_contact_state, dim=1,p=1)*4#self.rew_scales["r_stepping"]
         # rew_{action_clip}
         #rew_action_clip = (
         #    -torch.norm(self._current_policy_targets - self._current_clamped_targets, dim=1) ** 2
@@ -482,17 +473,18 @@ class Jump2DTask(RLTask):
         # rew_{torque}
         rew_torque =torch.exp(-torch.sum(commanded_torques**2, dim=1)/4) * 0 #self.rew_scales["r_torque"]*0
         # rew_{fallen}
-        rew_fallen = -self._fallen_buf.float() * 1000 #this should come from config
+        rew_fallen = -self._fallen_buf.float() * 200 #this should come from config
         # rew_{joint_vel}
         rew_joint_vel = -torch.sum(motor_joint_vel**2, dim=1)*0.000001*0 #self.rew_scales["r_joint_vel"]        
 
         #total_reward = (rew_orient + rew_fallen + rew_pos_tracking  + rew_accend +  rew_squat) * self.rew_scales["total"]
-        total_reward = (rew_squat + rew_fallen + rew_accend + rew_max_height + rew_joint_vel + rew_orient + rew_pos_tracking) * self.rew_scales["total"]
+        total_reward = (rew_squat + rew_fallen + rew_accend + rew_max_height + rew_joint_vel + rew_orient + rew_pos_tracking + rew_stepping) * self.rew_scales["total"]
        #
         # Save last values
         self.last_actions = self.actions.clone()
         self.last_motor_joint_vel = motor_joint_vel.clone()
         self.last_vel = velocity.clone()
+        #self._last_contact_state = self.contact_state.clone()
         # Place total reward in buffer
         self.rew_buf = total_reward.detach().clone()
         # update extras
@@ -507,8 +499,11 @@ class Jump2DTask(RLTask):
         self.extras["detailed_rewards/pos_tracking"] = rew_pos_tracking.detach()[self._stage_buf==2].mean()
         #self.extras["detailed_rewards/torque"] = rew_torque.detach().mean()
         self.extras["detailed_rewards/joint_acc"] = rew_joint_acc.detach().mean()
+        self.extras["detailed_rewards/steppin"] = rew_stepping.detach().mean()
         self.extras["metrics/max_height"] = self._max_heigth_buf[self._just_landed_buf].mean()
-        self.extras["metrics/stance_time"] = (self._stage_buf==0).float().mean()
+        self.extras["metrics/stance_fraq"] = (self._stage_buf==0).float().mean()
+        self.extras["metrics/flying_fraq"] = (self._stage_buf==1).float().mean()
+        self.extras["metrics/landing_fraq"] = (self._stage_buf==2).float().mean()
         self.extras["metrics/height"] = (base_position[:,2]).mean()
         #print((self._stage_buf==0).float().mean())
     
