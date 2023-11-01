@@ -82,6 +82,15 @@ class RLGTrainer:
 def parse_hydra_configs(cfg: DictConfig):
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+    if cfg.test:
+        cfg.task.env.numEnvs = 16
+        cfg.train.params.config.minibatch_size = 384
+        cfg.enable_livestream = True
+    else:
+        cfg.checkpoint = ''
+        cfg.train.params.load_checkpoint = False
+        cfg.train.params.load_path = cfg.checkpoint
+
     headless = cfg.headless
     rank = int(os.getenv("LOCAL_RANK", "0"))
     if cfg.multi_gpu:

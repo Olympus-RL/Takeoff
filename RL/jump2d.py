@@ -65,7 +65,7 @@ class Jump2DTask(RLTask):
         self._olympus_translation = torch.tensor(self._task_cfg["env"]["baseInitState"]["pos"])
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._num_observations = 27*self._memory_lenght 
-        self._num_actions = 4
+        self._num_actions = 8
         self._num_articulated_joints = 20
     
         RLTask.__init__(self, name, env)
@@ -89,11 +89,17 @@ class Jump2DTask(RLTask):
         self._basline_height = torch.tensor(3.0, device=self._device)
         self._target_rotation = torch.tensor([1,0,0,0], device=self._device).expand(self._num_envs, -1)
         #Random stuff after reste
-        init_squat_angle_limits = torch.tensor([torch.pi/12, self._max_transversal_motor_sum/2], device=self._device)
+        init_squat_angle_limits = torch.tensor([torch.pi/2, self._max_transversal_motor_sum/2], device=self._device)
         self._init_squat_angle_sampler = Uniform(init_squat_angle_limits[0], init_squat_angle_limits[1])
         init_upward_velocity_limits = torch.tensor([0.0, 0.5], device=self._device)
         self._init_upward_velocity_sampler = Uniform(init_upward_velocity_limits[0], init_upward_velocity_limits[1])
-        
+
+        # curiculum
+        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,0,40.0,0], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,10.0,70.0,30.0], device=self._device).deg2rad()
+        self._curriculum_tresh = 3.8
+        self._n_curriculum_levels = 2
+        self._steps_per_curriculum_level = 5
 
         self._obs_count = 0
         self._spring_step_count = 0
@@ -196,6 +202,7 @@ class Jump2DTask(RLTask):
         self._is_initilized_buf[torch.all(self._contact_states == 1, dim=1)] = True
         #force stance if  not initialized
         self._takeoff_buf[~self._is_initilized_buf] = False
+        self._est_height_buf = estimate_jump_height(base_velocities[:,:3],base_position,3.72)
 
         self._fallen_buf = self._olympusses.has_fallen()
         self._min_height_buf = torch.min(self._min_height_buf, height)
@@ -259,10 +266,11 @@ class Jump2DTask(RLTask):
         # extend the actions
         # expand points to same place in memeory. might be goofy
         extended_actions = torch.zeros((self._num_envs, 12), device=self._device)
-        extended_actions[:, self._action_0_indicies] = actions[:, [0]].expand(-1, 2)
-        extended_actions[:, self._action_1_indicies] = actions[:, [1]].expand(-1, 2)
-        extended_actions[:, self._action_2_indicies] = actions[:, [2]].expand(-1, 2)
-        extended_actions[:, self._action_3_indicies] = actions[:, [3]].expand(-1, 2)
+        extended_actions[:,self._transversal_indicies] = actions
+        #extended_actions[:, self._action_0_indicies] = actions[:, [0]].expand(-1, 2)
+        #extended_actions[:, self._action_1_indicies] = actions[:, [1]].expand(-1, 2)
+        #extended_actions[:, self._action_2_indicies] = actions[:, [2]].expand(-1, 2)
+        #extended_actions[:, self._action_3_indicies] = actions[:, [3]].expand(-1, 2)
         # lineraly interpolate between min and max
         self._current_policy_targets = (0.5 * (self._motor_joint_upper_limits - self._motor_joint_lower_limits) * extended_actions +
                                         0.5 * (self._motor_joint_lower_limits + self._motor_joint_upper_limits))
@@ -287,9 +295,11 @@ class Jump2DTask(RLTask):
         root_vel = torch.zeros((num_resets, 6), device=self._device)
         
         #if we are in training mode we sample random initial state
-        if not self._is_test:
+        if True: #not self._is_test:
             #sample squat angle
-            squat_angles = self._init_squat_angle_sampler.rsample((num_resets,))
+            lower = self._curriculum_init_squat_angle_lower[self._curriculum_level[env_ids]]
+            upper = self._curriculum_init_squat_angle_upper[self._curriculum_level[env_ids]]
+            squat_angles = sample_squat_angle(lower, upper)
             k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
             #sample init vertival velocity
             vel_z = self._init_upward_velocity_sampler.rsample((num_resets,))
@@ -299,7 +309,7 @@ class Jump2DTask(RLTask):
             dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
             root_pos[:, 2] = (init_heights-0.01)
             #root_vel[:, 2] = vel_z 
-        
+        #
         # Apply resets
         indices = env_ids.to(dtype=torch.int32)
         self._olympusses.set_joint_positions(dof_pos, indices)
@@ -314,6 +324,7 @@ class Jump2DTask(RLTask):
         self._is_initilized_buf[env_ids] = False
         self._init_dof_pos_buf[env_ids] = dof_pos
         self._min_height_buf[env_ids] = root_pos[:,2]
+        self._max_height_buf[env_ids] = root_pos[:,2]
 
     
     def post_reset(self):
@@ -368,7 +379,7 @@ class Jump2DTask(RLTask):
             self._num_envs, self.num_actions, dtype=torch.float, device=self._device, requires_grad=False
         )
         self.last_motor_joint_vel = torch.zeros(
-            (self._num_envs, 8), dtype=torch.float, device=self._device, requires_grad=False
+            (self._num_envs, 12), dtype=torch.float, device=self._device, requires_grad=False
         )
         self.last_vel = torch.zeros((self._num_envs, 3), dtype=torch.float, device=self._device, requires_grad=False)
         self.last_actions = torch.zeros(
@@ -380,6 +391,9 @@ class Jump2DTask(RLTask):
         self.obs_buf = torch.zeros((self._num_envs, self._num_observations), dtype=torch.float, device=self._device)
         self._last_contact_state = torch.zeros((self._num_envs, 4), dtype=torch.float, device=self._device)
         self._min_height_buf = torch.zeros(self._num_envs, dtype=torch.float, device=self._device)
+        self._curriculum_level = torch.zeros(self._num_envs, dtype=torch.long, device=self._device) + 1
+        self._curriculum_step = torch.zeros(self._num_envs, dtype=torch.long, device=self._device)
+        self._max_height_buf = torch.zeros(self._num_envs, dtype=torch.float, device=self._device)
         # reset all envs
         indices = torch.arange(self._olympusses.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -387,21 +401,33 @@ class Jump2DTask(RLTask):
     def calculate_metrics(self) -> None:
         base_position, base_rotation = self._olympusses.get_world_poses(clone=False)
         velocity = self._olympusses.get_linear_velocities(clone=False)
-        motor_joint_pos = self._olympusses.get_joint_positions(clone=False, joint_indices=self._transversal_indicies)
-        motor_joint_vel = self._olympusses.get_joint_velocities(clone=False, joint_indices=self._transversal_indicies)
+        motor_joint_pos = self._olympusses.get_joint_positions(clone=False, joint_indices=self._actuated_indicies)
+        motor_joint_vel = self._olympusses.get_joint_velocities(clone=False, joint_indices=self._actuated_indicies)
        
         ### Task Rewards ###
-        est_jump_height = (velocity[:,2].clamp(min=0)**2)/(2*3.72) + base_position[:,2]
-        rew_jump = (est_jump_height-2)*100 #self.rew_scales["r_jump"]
-        rew_jump[~self._takeoff_buf] = 0
-        rew_squat = torch.exp(-((base_position[:,2]-0.20)/0.2)**2) *30 #self.rew_scales["r_squat"]*10
+        #est_jump_height = (velocity[:,2].clamp(min=0)**2)/(2*3.72) + base_position[:,2]
+        #rew_jump = (est_jump_height-2)*100 #self.rew_scales["r_jump"]
+        #rew_jump[~self._takeoff_buf] = 0
+
+        #est_jump_lenght = estimate_jump_lenght(velocity, 3.72)
+        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*200 #self.rew_scales["r_jump"]        
+        rew_squat = exp_kernel_1d(base_position[:,2]-0.20,0.2)*4 #self.rew_scales["r_squat"]*10
         rew_squat[self._takeoff_buf] = 0  # only give squat reward when stance
 
         ### Regualization Rewards ###
-        rew_joint_acc = -torch.sum(((motor_joint_vel - self.last_motor_joint_vel) / self._step_dt)**2, dim=1) * 0.0000001# self.rew_scales["r_joint_acc"]
+        #rew_joint_acc = -torch.sum(((motor_joint_vel - self.last_motor_joint_vel) / self._step_dt)**2, dim=1) * 0.0000001# self.rew_scales["r_joint_acc"]
         rew_stepping = -torch.norm(self._contact_states-self._last_contact_state, dim=1,p=1)*4#self.rew_scales["r_stepping"]
-        rew_fallen = -self._fallen_buf.float() * 200 #this should come from config       
-        total_reward = (rew_squat*0 + rew_fallen + rew_jump + rew_stepping) * self.rew_scales["total"]
+        rew_fallen = -self._fallen_buf.float() * 0.01 #this should come from config  
+        rew_symmetry = -(
+            (motor_joint_pos[:,self._action_0_indicies[0]] - motor_joint_pos[:,self._action_0_indicies[1]])**2 +
+            (motor_joint_pos[:,self._action_1_indicies[0]] - motor_joint_pos[:,self._action_1_indicies[1]])**2 +
+            (motor_joint_pos[:,self._action_2_indicies[0]] - motor_joint_pos[:,self._action_2_indicies[1]])**2 +
+            (motor_joint_pos[:,self._action_3_indicies[0]] - motor_joint_pos[:,self._action_3_indicies[1]])**2
+        ) 
+            
+        
+        
+        total_reward = (rew_fallen + rew_jump + rew_squat + rew_stepping + rew_symmetry) * self.rew_scales["total"]
        
         # Save last values
         self.last_actions = self.actions.clone()
@@ -410,17 +436,25 @@ class Jump2DTask(RLTask):
         self._last_contact_state = self._contact_states.clone()
         # Place total reward in buffer
         self.rew_buf = total_reward.detach().clone()
+
         # update extras
         self.extras["detailed_rewards/fallen"] = rew_fallen.detach().mean()
         self.extras["detailed_rewards/jump"]= rew_jump[self._takeoff_buf].detach().mean()
         self.extras["detailed_rewards/squat"] = rew_squat.detach().mean()
+        self.extras["detailed_rewards/symmetry"] = rew_symmetry.detach().mean()
         #self.extras["detailed_rewards/torque"] = rew_torque.detach().mean()
-        self.extras["detailed_rewards/joint_acc"] = rew_joint_acc.detach().mean()
+        #self.extras["detailed_rewards/joint_acc"] = rew_joint_acc.detach().mean()
         self.extras["detailed_rewards/stepping"] = rew_stepping.detach().mean()
-        self.extras["metrics/height"] = (base_position[:,2]).mean()
+        self.extras["metrics/est_height"] = (self._est_height_buf[self._takeoff_buf]).mean()
         self.extras["metrics/min_height"] = self._min_height_buf[self._takeoff_buf].mean()
-        self.extras["metrics/num_takeoffs"] = self._takeoff_buf.sum()     
-
+        self.extras["metrics/num_takeoffs"] = self._takeoff_buf.sum()
+        self.extras["metrics/level_0_fraq"] = (self._curriculum_level==0).float().mean()
+        self.extras["metrics/level_1_fraq"] = (self._curriculum_level==1).float().mean()
+        self.extras["metrics/level_2_fraq"] = (self._curriculum_level==2).float().mean()
+        self.extras["metrics/level_3_fraq"] = (self._curriculum_level==3).float().mean()            
+        
+        exit_angle = calculate_exit_angle(velocity)
+        self.extras["metrics/exit_angle"] = exit_angle[self._takeoff_buf].mean()
    
     
     def is_done(self) -> None:
@@ -431,6 +465,18 @@ class Jump2DTask(RLTask):
             time_out = (self.progress_buf >= self.max_episode_length - 1).logical_or(self._fallen_buf)
         # TODO: Collision detection
         self.reset_buf[:] = time_out.logical_or(self._fallen_buf)
+
+        #step curriculum
+        if not self._is_test:
+            made_progress = (self._est_height_buf >= self._curriculum_tresh).logical_and(self.reset_buf)
+            failed = (self._est_height_buf < self._curriculum_tresh).logical_and(self.reset_buf)
+            self._curriculum_step[made_progress] += 1
+            self._curriculum_step[failed] = 0
+            level_up = (self._curriculum_step >= self._steps_per_curriculum_level).logical_and(made_progress)
+            self._curriculum_level[level_up] += 1
+            self._curriculum_step[level_up] = 0
+            self._curriculum_level[self._curriculum_level>=self._n_curriculum_levels] = 0
+
 
     def _clamp_joint_angels(self, joint_targets: Tensor):
         clamped_targets = joint_targets.clone()
@@ -451,3 +497,34 @@ class Jump2DTask(RLTask):
         clamped_targets[:, self.front_transversal_indicies] = front_pos
         clamped_targets[:, self.back_transversal_indicies] = back_pos
         return clamped_targets
+
+
+#########################################################
+#==================== JIT FUNCTIONS ====================#
+#########################################################
+
+@torch.jit.script
+def exp_kernel_3d(x: Tensor, sigma: float) -> Tensor:
+    return torch.exp(-(torch.sum(x**2,dim=1) / sigma**2))
+@torch.jit.script
+def exp_kernel_1d(x: Tensor, sigma: float) -> Tensor:
+    return torch.exp(-(x/sigma)**2)
+
+@torch.jit.script
+def estimate_jump_lenght(velocity: Tensor, g: float) -> Tensor:
+    t = 2*velocity[:,2].clamp(min=0)/g
+    planar_vel = torch.norm(velocity[:,:2], dim=1)
+    return planar_vel*t
+
+@torch.jit.script
+def estimate_jump_height(velocity: Tensor,pos: Tensor,g: float) -> Tensor:
+    return (velocity[:,2].clamp(min=0)**2)/(2*g) + pos[:,2]
+
+@torch.jit.script
+def calculate_exit_angle(velocity: Tensor) -> Tensor:
+    planar_vel = torch.norm(velocity[:,:2], dim=1)
+    return torch.atan2(velocity[:,2], planar_vel)
+
+@torch.jit.script
+def sample_squat_angle(lower: Tensor, upper: Tensor) -> Tensor:
+    return torch.rand(lower.shape[0], device=lower.device) * (upper - lower) + lower
