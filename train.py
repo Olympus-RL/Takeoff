@@ -87,8 +87,8 @@ def parse_hydra_configs(cfg: DictConfig):
         cfg.train.params.config.minibatch_size = 384
         cfg.enable_livestream = True
     else:
-        cfg.checkpoint = ''
-        cfg.train.params.load_checkpoint = False
+        cfg.checkpoint = 'runs/Olympus/saved_nn/highjump_async.pth'
+        cfg.train.params.load_checkpoint = True
         cfg.train.params.load_path = cfg.checkpoint
 
     headless = cfg.headless
