@@ -68,7 +68,7 @@ class OlympusSpringJIT:
         back_knee_pos = self._get_back_knees_pos()
         front_motor_joint_pos = self._get_front_motors_joint_pos()
         back_motor_joint_pos = self._get_back_motors_joint_pos()
-        joint_efforts = _compute_taus(
+        joint_efforts = _compute_taus_v2(
             motor_housing_rot,
             front_motor_pos,
             front_knee_pos,
@@ -305,6 +305,8 @@ def _compute_taus(
         back_knee_pos=back_knee_pos,
         r_pulley=r_pulley,
     )
+
+    modes = torch.randint(0,3,(motor_housing_rot.shape[0],),device=motor_housing_rot.device)
     actions = torch.zeros((modes.shape[0], 2), device=modes.device)
 
 
@@ -386,3 +388,98 @@ def _compute_taus(
     )
 
     return joint_efforts
+
+
+@torch.jit.script
+def _compute_taus_v2(
+    motor_housing_rot: Tensor,
+    front_motor_pos: Tensor,
+    front_knee_pos: Tensor,
+    back_motor_pos: Tensor,
+    back_knee_pos: Tensor,
+    front_motor_joint_pos: Tensor,
+    back_motor_joint_pos: Tensor,
+    eq_dist: Tensor,
+    k: Tensor,
+    r_pulley: Tensor,
+) -> Tensor:
+    
+
+    modes = get_mode(
+        motor_housing_rot=motor_housing_rot,
+        front_motor_pos=front_motor_pos,
+        front_knee_pos=front_knee_pos,
+        back_motor_pos=back_motor_pos,
+        back_knee_pos=back_knee_pos,
+        r_pulley=r_pulley,
+    )
+    actions = torch.zeros((modes.shape[0], 2), device=modes.device)
+
+
+    #add dummy row to modes to deal with the case where some modes are not present
+    mask = modes == 0
+    
+
+    actions_0 =_get_action_both_normal(
+        front_motor_pos,
+        back_motor_pos,
+        front_knee_pos,
+        back_knee_pos,
+        eq_dist,
+        k,
+    )
+
+    actions_1 = _get_action_both_inverted(
+        front_motor_pos,
+        back_motor_pos,
+        front_knee_pos,
+        front_motor_joint_pos,
+        back_motor_joint_pos,
+        eq_dist,
+        k,
+        r_pulley,
+    )
+
+    actions_2 = _get_action_front_normal_back_inverted(
+        front_motor_pos,
+        back_motor_pos,
+        front_knee_pos,
+        front_motor_joint_pos,
+        back_motor_joint_pos,
+        eq_dist,
+        k,
+        r_pulley,
+    )
+
+    actions_3 = _get_action_front_inverted_back_normal(
+        front_motor_pos,
+        back_motor_pos,
+        back_knee_pos,
+        front_motor_joint_pos,
+        back_motor_joint_pos,
+        eq_dist,
+        k,
+        r_pulley,
+    )
+
+    mask = modes == 0
+    actions[mask] = actions_0[mask]
+    mask = modes == 1
+    actions[mask] = actions_1[mask]
+    mask = modes == 2
+    actions[mask] = actions_2[mask]
+    mask = modes == 3
+    actions[mask] = actions_3[mask]
+
+    num_envs = actions.shape[0] // 4
+    joint_efforts = torch.concatenate(
+        [actions[i * num_envs : (i + 1) * num_envs, :] for i in range(4)], dim=1
+    )
+
+    return joint_efforts
+
+
+    
+
+
+    

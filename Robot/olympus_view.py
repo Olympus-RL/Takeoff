@@ -105,8 +105,8 @@ class OlympusView(ArticulationView):
             reset_xform_properties=False,
             track_contact_forces=True,
             prepare_contact_sensors=True,
+            #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
-
         self.MotorHousing_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/MotorHousing_FR",
             name="MotorHousing_FR",
@@ -148,6 +148,7 @@ class OlympusView(ArticulationView):
             reset_xform_properties=False,
             track_contact_forces=True,
             prepare_contact_sensors=True,
+            #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
         self.MotorHousing_BL = RigidPrimView(
@@ -191,6 +192,7 @@ class OlympusView(ArticulationView):
             reset_xform_properties=False,
             track_contact_forces=True,
             prepare_contact_sensors=True,
+            #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
         self.MotorHousing_BR = RigidPrimView(
@@ -234,6 +236,7 @@ class OlympusView(ArticulationView):
             reset_xform_properties=False,
             track_contact_forces=True,
             prepare_contact_sensors=True,
+            #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
         self.rigid_prims = [
@@ -276,20 +279,26 @@ class OlympusView(ArticulationView):
 
         return base_heights[:] < threshold
 
-    def is_collision(self) -> Tensor:
+    def get_collision_buf(self) -> Tensor:
         coll_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
         for rigid_prim in self.rigid_prims:
+            if "Paw" in rigid_prim.name:
+                continue
             forces: Tensor = rigid_prim.get_net_contact_forces(clone=False)
             prim_in_collision = (forces.abs() > 1e-5).any(dim=-1)
             coll_buf = coll_buf.logical_or(prim_in_collision)
         return coll_buf
     
     def get_contact_state(self) -> Tensor:
-        cotact_state = torch.cat(
+        contact_state = torch.cat(
             [torch.any(paw.get_net_contact_forces(clone=False).abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
             dim=-1
         )
-        return cotact_state
+        #cotact_state = torch.cat(
+        #    [torch.any(paw.get_contact_force_matrix(clone=False)[:,0,:].abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
+        #    dim=-1
+        #)
+        return contact_state
     
     def has_fallen(self) -> Tensor:
         #base_pos, _ = self.get_world_poses()
