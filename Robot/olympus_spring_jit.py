@@ -305,8 +305,6 @@ def _compute_taus(
         back_knee_pos=back_knee_pos,
         r_pulley=r_pulley,
     )
-
-    modes = torch.randint(0,3,(motor_housing_rot.shape[0],),device=motor_housing_rot.device)
     actions = torch.zeros((modes.shape[0], 2), device=modes.device)
 
 

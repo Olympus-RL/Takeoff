@@ -67,12 +67,12 @@ env:
     rPosTrackingRewardScale: 1.0
     rSquatRewardScale: 3.0
     # episode length in seconds
-    episodeLength_s: 0.5
+    episodeLength_s: 3.0
 
 sim:
   dt: 0.00208
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
-  gravity: [0.0, 0.0, 0] #garvity on march
+  gravity: [0.0, 0.0, -3.72] #garvity on march
   add_ground_plane: True
   use_flatcache: True
   enable_scene_query_support: False

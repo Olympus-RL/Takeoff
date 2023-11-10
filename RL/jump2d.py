@@ -217,22 +217,7 @@ class Jump2DTask(RLTask):
         )
         self.obs_buf = new_obs.clone()
         observations = {self._olympusses.name: {"obs_buf": self.obs_buf}}
-
-        ### test forward kimrmatics ####
-
-       #inner_joint = self._olympusses.get_joint_positions(clone=False, joint_indices=self._knee_inner_indicies)
-       #outer_joint = self._olympusses.get_joint_positions(clone=False, joint_indices=self._knee_outer_indicies)
-       #front_joint = self._olympusses.get_joint_positions(clone=False, joint_indices=self.front_transversal_indicies)
-       #back_joint = self._olympusses.get_joint_positions(clone=False, joint_indices=self.back_transversal_indicies)
-#
-       #estimated_inner = torch.zeros_like(inner_joint)
-       #estimated_outer = torch.zeros_like(outer_joint)
-       #for i in range(4):
-       #    estimated_inner[:,i], estimated_outer[:,i], _ = self._forward_kin._calculate_knee_angles(front_joint[:,i], back_joint[:,i])
-       #
-       #print("max inner error", torch.abs(inner_joint-estimated_inner).rad2deg()[0])
-       #print("max outer error", torch.abs(outer_joint-estimated_outer).rad2deg()[0])
-
+        
         return observations
 
     def pre_physics_step(self) -> None:
@@ -308,26 +293,19 @@ class Jump2DTask(RLTask):
         root_vel = torch.zeros((num_resets, 6), device=self._device)
         
         #if we are in training mode we sample random initial state
-        if True: #not self._is_test:
+        if not self._is_test:
             #sample squat angle
             lower = self._curriculum_init_squat_angle_lower[self._curriculum_level[env_ids]]
             upper = self._curriculum_init_squat_angle_upper[self._curriculum_level[env_ids]]
-            #squat_angles = sample_squat_angle(lower, upper)
+            squat_angles = sample_squat_angle(lower, upper)
             front = torch.rand((num_resets,2), device=self._device)*120*torch.pi/180
-            #k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
-            k_outer, k_inner, init_heights = self._forward_kin._calculate_knee_angles(front[:,0], front[:,1])
-            #sample init vertival velocity
-            vel_z = self._init_upward_velocity_sampler.rsample((num_resets,))
+            k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
+
             #Set initial joint states
-            #dof_pos[:, self._frotransversal_indicies] = squat_angles.unsqueeze(-1)
-            #dof_pos[:, self._knee_outer_indicies] = k_outer.unsqueeze(-1)
-            #dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
-            #root_pos[:, 2] = (init_heights-0.01)
-            #root_vel[:, 2] = vel_z 
-            dof_pos[:, self.front_transversal_indicies] = front[:,[0]]
-            dof_pos[:, self.back_transversal_indicies] = front[:,[1]]
+            dof_pos[:, self._frotransversal_indicies] = squat_angles.unsqueeze(-1)
             dof_pos[:, self._knee_outer_indicies] = k_outer.unsqueeze(-1)
             dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
+            root_pos[:, 2] = (init_heights-0.01)
         ##
         # Apply resets
         indices = env_ids.to(dtype=torch.int32)
