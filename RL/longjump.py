@@ -15,10 +15,11 @@ from omni.isaac.core.utils.torch.rotations import (
 )
 from omni.isaac.core.utils.prims import get_prim_at_path
 
-from Robot import Olympus, OlympusView, OlympusSpring, OlympusSpringJIT, OlympusForwardKinematics
+from Robot import Olympus, OlympusView,OlympusSpringJIT, OlympusForwardKinematics
+from loggers import JumpLogger
 
 
-class Jump2DTask(RLTask):
+class LongJumpTask(RLTask):
     def __init__(self, name, sim_config, env, offset=None) -> None:
         self._sim_config = sim_config
         self._cfg = sim_config.config
@@ -102,7 +103,9 @@ class Jump2DTask(RLTask):
         self._steps_per_curriculum_level = 5
 
         self._obs_count = 0
-        self._spring_step_count = 0
+
+        if self._is_test:
+            self.jump_logger = JumpLogger(self._device, self._num_envs, self._step_dt)
         return
 
     def set_up_scene(self, scene) -> None:
@@ -198,7 +201,7 @@ class Jump2DTask(RLTask):
         height = base_position[:, -1]
         self._contact_states = self._olympusses.get_contact_state()
         is_airborne = torch.all(self._contact_states == 0, dim=1)
-        self._takeoff_buf = is_airborne.logical_and(base_velocities[:, 2] > 0.1)
+        self._takeoff_buf = (~self._takeoff_buf).logical_and(is_airborne).logical_and(base_velocities[:, 2] > 0.1)
         self._is_initilized_buf[torch.all(self._contact_states == 1, dim=1)] = True
         #force stance if  not initialized
         self._takeoff_buf[~self._is_initilized_buf] = False
@@ -217,7 +220,16 @@ class Jump2DTask(RLTask):
         )
         self.obs_buf = new_obs.clone()
         observations = {self._olympusses.name: {"obs_buf": self.obs_buf}}
-        
+
+        if self._is_test:
+            self.jump_logger.log_point(
+                base_position,
+                base_rotation,
+                base_velocities[:, :3],
+                base_velocities[:, 3:],
+                self._takeoff_buf,
+            )
+
         return observations
 
     def pre_physics_step(self) -> None:
@@ -298,11 +310,10 @@ class Jump2DTask(RLTask):
             lower = self._curriculum_init_squat_angle_lower[self._curriculum_level[env_ids]]
             upper = self._curriculum_init_squat_angle_upper[self._curriculum_level[env_ids]]
             squat_angles = sample_squat_angle(lower, upper)
-            front = torch.rand((num_resets,2), device=self._device)*120*torch.pi/180
             k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
 
             #Set initial joint states
-            dof_pos[:, self._frotransversal_indicies] = squat_angles.unsqueeze(-1)
+            dof_pos[:, self._transversal_indicies] = squat_angles.unsqueeze(-1)
             dof_pos[:, self._knee_outer_indicies] = k_outer.unsqueeze(-1)
             dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
             root_pos[:, 2] = (init_heights-0.01)
@@ -322,6 +333,7 @@ class Jump2DTask(RLTask):
         self._init_dof_pos_buf[env_ids] = dof_pos
         self._min_height_buf[env_ids] = root_pos[:,2]
         self._max_height_buf[env_ids] = root_pos[:,2]
+        self._takeoff_buf[env_ids] = False
 
     
     def post_reset(self):
@@ -392,6 +404,7 @@ class Jump2DTask(RLTask):
         self._curriculum_level = torch.zeros(self._num_envs, dtype=torch.long, device=self._device)
         self._curriculum_step = torch.zeros(self._num_envs, dtype=torch.long, device=self._device)
         self._max_height_buf = torch.zeros(self._num_envs, dtype=torch.float, device=self._device)
+        self._takeoff_buf = torch.zeros(self._num_envs, dtype=torch.bool, device=self._device)
         # reset all envs
         indices = torch.arange(self._olympusses.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -473,6 +486,8 @@ class Jump2DTask(RLTask):
             time_out = (self.progress_buf >= self.max_episode_length - 1)
         # TODO: Collision detection
         self.reset_buf[:] = time_out.logical_or(self._collision_buf)
+        if self._is_test and self.reset_buf[0]:
+            self.jump_logger.plot_data()
 
         #step curriculum
         #if not self._is_test:

@@ -1,1 +1,2 @@
-from .jump2d import Jump2DTask
+from .highjump import HighJumpTask
+from .longjump import LongJumpTasks

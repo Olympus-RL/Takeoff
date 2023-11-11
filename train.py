@@ -83,11 +83,11 @@ def parse_hydra_configs(cfg: DictConfig):
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     if cfg.test:
-        cfg.task.env.numEnvs = 16
-        cfg.train.params.config.minibatch_size = 384
+        cfg.task.env.numEnvs = 2
+        cfg.train.params.config.minibatch_size = 384/8
         cfg.enable_livestream = True
     else:
-        cfg.checkpoint = 'runs/Olympus/saved_nn/highjump_async.pth'
+        cfg.checkpoint = ''
         cfg.train.params.load_checkpoint = True
         cfg.train.params.load_path = cfg.checkpoint
 
@@ -120,14 +120,13 @@ def parse_hydra_configs(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
     cfg_dict["seed"] = cfg.seed
 
-    #################################################################
-    # Initialize task (Tarek)
-    #################################################################
-    from RL import Jump2DTask
+    from RL import HighJumpTask, LongJumpTask
     from omniisaacgymenvs.utils.config_utils.sim_config import SimConfig
 
+    task_dict = {"HighJump": HighJumpTask, "LongJump": LongJumpTask}
+
     sim_config = SimConfig(cfg_dict)
-    task = Jump2DTask(name="Jump2D", sim_config=sim_config, env=env)
+    task = task_dict[cfg.task](name=cfg.task, sim_config=sim_config, env=env)
     env.set_task(
         task=task,
         sim_params=sim_config.get_physics_params(),
