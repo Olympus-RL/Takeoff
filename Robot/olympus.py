@@ -90,3 +90,12 @@ class Olympus(Robot):
     @property
     def dof_names(self):
         return self._dof_names
+    
+    def prepare_contacts(self, stage, prim): 
+        for link_prim in prim.GetChildren(): 
+            if link_prim.HasAPI(PhysxSchema.PhysxRigidBodyAPI):  
+                if "Housing" not in str(link_prim.GetPrimPath()): 
+                    rb = PhysxSchema.PhysxRigidBodyAPI.Get(stage, link_prim.GetPrimPath()) 
+                    rb.CreateSleepThresholdAttr().Set(0) 
+                    cr_api = PhysxSchema.PhysxContactReportAPI.Apply(link_prim) 
+                    cr_api.CreateThresholdAttr().Set(0) 

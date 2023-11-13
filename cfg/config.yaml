@@ -35,8 +35,9 @@ solver_type: 0 # 0: pgs, 1: tgs
 # RLGames Arguments
 # test - if set, run policy in inference mode (requires setting checkpoint to load)
 test: False
+debug: False
 # used to set checkpoint path
-checkpoint: 'runs/Olympus/nn/Olympus.pth'
+checkpoint: 'runs/${task.name}/nn/${task.name}.pth'
 
 # disables rendering
 headless: True

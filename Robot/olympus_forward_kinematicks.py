@@ -63,7 +63,6 @@ class OlympusForwardKinematics(torch.jit.ScriptModule):
             delta_q = -1 * torch.linalg.lstsq(J, diff)[0].detach().requires_grad_(False)
             q_fk += delta_q[:, 0]
             q_bk += delta_q[:, 1]
-        print(diff.norm(p=2,dim=-1).max())
         return self._clamp_angle(q_fk.detach()), self._clamp_angle(q_bk.detach()), paw_attachment_mhf_0
 
     @torch.jit.script_method
@@ -97,10 +96,10 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     fk = OlympusForwardKinematics(device)
     u = torch.distributions.Uniform((0*torch.ones((10000,), device=device)).deg2rad(), 120 * torch.pi / 180 * torch.ones(10000, device=device))
-    qf = u.sample()
-    qb = u.sample()
-    qf = (120*torch.ones((2,), device=device)).deg2rad()
-    qb = (120*torch.ones((2,), device=device)).deg2rad()
+    qf = u.sample()*0
+    qb = u.sample()*0
+    qf = (120*torch.ones((2,), device=device)).deg2rad()*0
+    qb = (120*torch.ones((2,), device=device)).deg2rad()*0
     k_outer, k_inner, h = fk._calculate_knee_angles(qf, qb)
   
     #k_outer, k_inner, h = fk.get_squat_configuration(q)

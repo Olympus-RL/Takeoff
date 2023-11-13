@@ -28,7 +28,7 @@
 
 import time
 
-from typing import Optional
+from typing import Optional,Tuple
 import torch
 from torch import Tensor
 
@@ -48,14 +48,6 @@ class OlympusView(ArticulationView):
 
         super().__init__(prim_paths_expr=prim_paths_expr, name=name, reset_xform_properties=False)
 
-        self._knees = RigidPrimView(
-            prim_paths_expr="/World/envs/.*/Olympus/.*Thigh.*",
-            name="knees_view",
-            reset_xform_properties=False,
-            track_contact_forces=track_contact_forces,
-            prepare_contact_sensors=prepare_contact_sensors,
-        )
-
         self._base = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/Body",
             name="body_view",
@@ -68,86 +60,86 @@ class OlympusView(ArticulationView):
             prim_paths_expr="/World/envs/.*/Olympus/MotorHousing_FL",
             name="MotorHousing_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontMotor_FL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontThigh_FL",
             name="FrontMotor_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackMotor_FL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackThigh_FL",
             name="BackMotor_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontKnee_FL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontShank_FL",
             name="FrontKnee_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackKnee_FL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackShank_FL",
             name="BackKnee_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=track_contact_forces,
         )
         self.Paw_FL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/Paw_FL",
             name="Paw_FL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
             #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
         self.MotorHousing_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/MotorHousing_FR",
             name="MotorHousing_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontMotor_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontThigh_FR",
             name="FrontMotor_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackMotor_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackThigh_FR",
             name="BackMotor_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontKnee_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontShank_FR",
             name="FrontKnee_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackKnee_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackShank_FR",
             name="BackKnee_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.Paw_FR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/Paw_FR",
             name="Paw_FR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
             #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
@@ -155,43 +147,43 @@ class OlympusView(ArticulationView):
             prim_paths_expr="/World/envs/.*/Olympus/MotorHousing_BL",
             name="MotorHousing_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontMotor_BL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontThigh_BL",
             name="FrontMotor_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackMotor_BL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackThigh_BL",
             name="BackMotor_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontKnee_BL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontShank_BL",
             name="FrontKnee_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackKnee_BL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackShank_BL",
             name="BackKnee_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.Paw_BL = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/Paw_BL",
             name="Paw_BL",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
             #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
@@ -199,43 +191,43 @@ class OlympusView(ArticulationView):
             prim_paths_expr="/World/envs/.*/Olympus/MotorHousing_BR",
             name="MotorHousing_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontMotor_BR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontThigh_BR",
             name="FrontMotor_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackMotor_BR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackThigh_BR",
             name="BackMotor_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.FrontKnee_BR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/FrontShank_BR",
             name="FrontKnee_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.BackKnee_BR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/BackShank_BR",
             name="BackKnee_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
         )
         self.Paw_BR = RigidPrimView(
             prim_paths_expr="/World/envs/.*/Olympus/Paw_BR",
             name="Paw_BR",
             reset_xform_properties=False,
-            track_contact_forces=True,
-            prepare_contact_sensors=True,
+            track_contact_forces=track_contact_forces,
+            prepare_contact_sensors=prepare_contact_sensors,
             #contact_filter_prim_paths_expr= ["/World/defaultGroundPlane"],
         )
 
@@ -246,25 +238,25 @@ class OlympusView(ArticulationView):
             self.BackMotor_FL,
             self.FrontKnee_FL,
             self.BackKnee_FL,
-            self.Paw_FL,
+            #self.Paw_FL,
             self.MotorHousing_FR,
             self.FrontMotor_FR,
             self.BackMotor_FR,
             self.FrontKnee_FR,
             self.BackKnee_FR,
-            self.Paw_FR,
+            #self.Paw_FR,
             self.MotorHousing_BL,
             self.FrontMotor_BL,
             self.BackMotor_BL,
             self.FrontKnee_BL,
             self.BackKnee_BL,
-            self.Paw_BL,
+            #self.Paw_BL,
             self.MotorHousing_BR,
             self.FrontMotor_BR,
             self.BackMotor_BR,
             self.FrontKnee_BR,
             self.BackKnee_BR,
-            self.Paw_BR,
+            #self.Paw_BR,
         ]
         self._paws = [self.Paw_FL, self.Paw_FR,self.Paw_BL, self.Paw_BR]
 
@@ -279,36 +271,52 @@ class OlympusView(ArticulationView):
 
         return base_heights[:] < threshold
 
+    def get_contact_state_collisionbuf(self) -> Tuple[Tensor, Tensor]:
+        #coll_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
+        #paw_count = 0
+        #for rigid_prim in self.rigid_prims:
+        #    forces: Tensor = rigid_prim.get_net_contact_forces(clone=track_contact_forces=True)
+        #    prim_in_collision = (forces.abs() > 1e-5).any(dim=-1)
+        #    if "Paw" in rigid_prim.name:
+        #        contact_state[:,paw_count] = prim_in_collision.float()
+        #        paw_count += 1
+        #    else:
+        #        coll_buf = coll_buf.logical_or(prim_in_collision)
+        #return contact_state, coll_buf
+        coll_buf = self.get_collision_buf()
+        contact_state = self.get_contact_state()
+        #contact_state = torch.zeros(self._count,4, dtype=torch.float, device=self._device) + 1
+
+        return contact_state, coll_buf
+    
     def get_collision_buf(self) -> Tensor:
         coll_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
         for rigid_prim in self.rigid_prims:
-            if "Paw" in rigid_prim.name:
-                continue
-            forces: Tensor = rigid_prim.get_net_contact_forces(clone=False)
+            forces: Tensor = rigid_prim.get_net_contact_forces(clone=True)
             prim_in_collision = (forces.abs() > 1e-5).any(dim=-1)
             coll_buf = coll_buf.logical_or(prim_in_collision)
         return coll_buf
     
     def get_contact_state(self) -> Tensor:
         contact_state = torch.cat(
-            [torch.any(paw.get_net_contact_forces(clone=False).abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
+            [torch.any(paw.get_net_contact_forces(clone=True).abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
             dim=-1
         )
-        #cotact_state = torch.cat(
+        #contact_state = torch.cat(
         #    [torch.any(paw.get_contact_force_matrix(clone=False)[:,0,:].abs() > 1e-5,dim=-1).float().unsqueeze(1) for paw in self._paws],
         #    dim=-1
         #)
         return contact_state
     
-    def has_fallen(self) -> Tensor:
-        #base_pos, _ = self.get_world_poses()
-        #base_heights = base_pos[:, 2]
-        #return base_heights[:] < 0.19
-        fallen_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
-        for rigid_prim in self.rigid_prims:
-            if "Paw" in rigid_prim.name:
-                continue
-            forces: Tensor = rigid_prim.get_net_contact_forces(clone=False)
-            prim_in_collision = (forces.abs() > 1e-5).any(dim=-1)
-            fallen_buf = fallen_buf.logical_or(prim_in_collision)
-        return fallen_buf
+    #def get_fallen_buf(self) -> Tensor:
+    #    #base_pos, _ = self.get_world_poses()
+    #    #base_heights = base_pos[:, 2]
+    #    #return base_heights[:] < 0.19
+    #    fallen_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
+    #    for prim in self.rigid_prims:
+    #        if "Paw" in prim.name or "Motor" in prim.name:
+    #            continue
+    #        z = prim.get_world_poses()[0][:,2]
+    #        
+    #        fallen_buf = fallen_buf.logical_or(z < 0.05)
+    #    return fallen_buf

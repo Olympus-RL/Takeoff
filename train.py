@@ -81,16 +81,20 @@ class RLGTrainer:
 @hydra.main(config_name="config", config_path="./cfg")
 def parse_hydra_configs(cfg: DictConfig):
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    if cfg.test:
-        cfg.task.env.numEnvs = 2
-        cfg.train.params.config.minibatch_size = 384/8
+    if cfg.debug:
+        cfg.task.env.numEnvs = 16
+        cfg.train.params.config.minibatch_size = 384
         cfg.enable_livestream = True
+    elif cfg.test:
+        cfg.task.env.numEnvs = 16
+        cfg.train.params.config.minibatch_size = 384
+        cfg.enable_livestream = True
+        cfg.checkpoint = 'runs/HighJump/nn/last_HighJump_ep_400_rew_0.011994479.pth'
+        cfg.train.params.load_path = cfg.checkpoint
     else:
         cfg.checkpoint = ''
-        cfg.train.params.load_checkpoint = True
+        cfg.train.params.load_checkpoint = False
         cfg.train.params.load_path = cfg.checkpoint
-
     headless = cfg.headless
     rank = int(os.getenv("LOCAL_RANK", "0"))
     if cfg.multi_gpu:
@@ -126,7 +130,7 @@ def parse_hydra_configs(cfg: DictConfig):
     task_dict = {"HighJump": HighJumpTask, "LongJump": LongJumpTask}
 
     sim_config = SimConfig(cfg_dict)
-    task = task_dict[cfg.task](name=cfg.task, sim_config=sim_config, env=env)
+    task = task_dict[cfg_dict["task_name"]](name=cfg_dict["task_name"], sim_config=sim_config, env=env)
     env.set_task(
         task=task,
         sim_params=sim_config.get_physics_params(),

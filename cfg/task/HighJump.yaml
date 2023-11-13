@@ -1,5 +1,5 @@
 # used to create the object
-name: Olympus
+name: HighJump
 
 physics_engine: ${..physics_engine}
 
@@ -49,7 +49,7 @@ env:
   
   # Joint limits
   jointLimits:
-    lateralMotor              : [-10, 200]  # [deg]
+    lateralMotor              : [-120, 10]  # [deg]
     transversalMotor          : [-50, 180]  # [deg]
     minTransversalMotorSum   : 10         # [deg]
     maxTransversalMotorSum   : 220          # [deg]
@@ -67,7 +67,7 @@ env:
     rPosTrackingRewardScale: 1.0
     rSquatRewardScale: 3.0
     # episode length in seconds
-    episodeLength_s: 6.0
+    episodeLength_s: 5.0
 
 sim:
   dt: 0.00208
