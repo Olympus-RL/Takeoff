@@ -204,7 +204,7 @@ class HighJumpTask(RLTask):
         base_position, base_rotation = self._olympusses.get_world_poses(clone=False)
         height = base_position[:, -1]
         self._contact_states, self._collision_buf = self._olympusses.get_contact_state_collisionbuf()
-        self._collision_buf = self._collision_buf.logical_or(height < 0.20)
+        self._collision_buf = self._collision_buf.logical_or(height < 0.175)
         
         
         is_airborne = torch.all(self._contact_states == 0, dim=1)
@@ -441,7 +441,7 @@ class HighJumpTask(RLTask):
         motor_joint_vel = self._olympusses.get_joint_velocities(clone=False, joint_indices=self._actuated_indicies)
        
         ### Task Rewards ###
-        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*400 #self.rew_scales["r_jump"]
+        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*400*0 #self.rew_scales["r_jump"]
         rew_jump[~self._takeoff_buf] = 0
         rew_jump[self._collision_buf] = 0 
 
