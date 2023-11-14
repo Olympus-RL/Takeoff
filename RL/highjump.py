@@ -204,6 +204,7 @@ class HighJumpTask(RLTask):
         base_position, base_rotation = self._olympusses.get_world_poses(clone=False)
         height = base_position[:, -1]
         self._contact_states, self._collision_buf = self._olympusses.get_contact_state_collisionbuf()
+        self._collision_buf = self._collision_buf.logical_or(height < 0.22)
         
         
         is_airborne = torch.all(self._contact_states == 0, dim=1)
@@ -440,11 +441,11 @@ class HighJumpTask(RLTask):
         motor_joint_vel = self._olympusses.get_joint_velocities(clone=False, joint_indices=self._actuated_indicies)
        
         ### Task Rewards ###
-        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*400 #self.rew_scales["r_jump"]
+        rew_jump = (estimate_jump_height-2)*200 #exp_kernel_1d(self._est_height_buf-5,2)*400 #self.rew_scales["r_jump"]
         rew_jump[~self._takeoff_buf] = 0
         rew_jump[self._collision_buf] = 0 
 
-        rew_squat = exp_kernel_1d(base_position[:,2]-0.25,0.25)*2 #self.rew_scales["r_squat"]*10
+        rew_squat = exp_kernel_1d(base_position[:,2]-0.25,0.25)*0 #self.rew_scales["r_squat"]*10
         rew_squat[self._stage_buf != 0] = 0  # only give squat reward when stance
         rew_squat[self._curriculum_level==0] = 0
         orient_error = quat_diff_rad(base_rotation, self._target_rotation)
@@ -457,7 +458,7 @@ class HighJumpTask(RLTask):
       
         
         ### Regualization Rewards ###
-        rew_lateral_pos = -torch.sum(motor_joint_pos[:,self.lateral_indicies]**2,dim=-1)*0.5#self.rew_scales["r_lateral_pos"]
+        rew_lateral_pos = -torch.sum(motor_joint_pos[:,self.lateral_indicies]**2,dim=-1)*3#self.rew_scales["r_lateral_pos"]
         rew_lateral_pos[self._stage_buf==1] = 0
         rew_joint_acc = -torch.sum(((motor_joint_vel - self.last_motor_joint_vel) / self._step_dt)**2, dim=1) * 0.001# self.rew_scales["r_joint_acc"]
         rew_stepping = -torch.norm(self._contact_states-self._last_contact_state, dim=1,p=1)*0.0#self.rew_scales["r_stepping"]
@@ -475,7 +476,7 @@ class HighJumpTask(RLTask):
         rew_spin[~self._takeoff_buf] = 0
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1)) * 0 #self.rew_scales["r_action_clip"]
 
-        total_reward = (rew_collision  + rew_jump + rew_orient+ rew_land_stand + rew_squat + rew_accend + rew_spin + rew_lateral_pos) * self.rew_scales["total"]
+        total_reward = (rew_collision  + rew_jump + rew_orient+ + rew_squat + rew_accend + rew_spin + rew_lateral_pos) * self.rew_scales["total"]
        
         # Save last values
         self.last_actions = self.actions.clone()
@@ -541,7 +542,7 @@ class HighJumpTask(RLTask):
             failed = (~made_progress).logical_and(self.reset_buf)
             self._curriculum_step[made_progress] += 1
             self._curriculum_step[failed] = 0
-            level_up = (self._curriculum_step >= self._steps_per_curriculum_level).logical_and(made_progress).logical_and(self._curriculum_level!=2)
+            level_up = (self._curriculum_step >= self._steps_per_curriculum_level).logical_and(made_progress).logical_and(self._curriculum_level!=1)
             self._curriculum_level[level_up] += 1
             #self._curriculum_step[level_up] = 0
             #self._curriculum_level[self._curriculum_level>=self._n_curriculum_levels] = 0
