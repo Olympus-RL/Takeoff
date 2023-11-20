@@ -441,7 +441,7 @@ class HighJumpTask(RLTask):
         motor_joint_vel = self._olympusses.get_joint_velocities(clone=False, joint_indices=self._actuated_indicies)
        
         ### Task Rewards ###
-        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*400*0 #self.rew_scales["r_jump"]
+        rew_jump = exp_kernel_1d(self._est_height_buf-5,2)*400 #self.rew_scales["r_jump"]
         rew_jump[~self._takeoff_buf] = 0
         rew_jump[self._collision_buf] = 0 
 
