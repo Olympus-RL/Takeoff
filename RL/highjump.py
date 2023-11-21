@@ -480,11 +480,11 @@ class HighJumpTask(RLTask):
             (motor_joint_pos[:,self._sym_4_indicies[0]] - motor_joint_pos[:,self._sym_4_indicies[1]])**2 +
             (motor_joint_pos[:,self._sym_5_indicies[0]] - motor_joint_pos[:,self._sym_5_indicies[1]])**2
         )*0.1
-        rew_spin = -torch.sum(ang_velocity**2, dim=1)*1
+        rew_spin = -torch.sum(ang_velocity**2, dim=1)*2
         rew_spin[~self._takeoff_buf] = 0
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1)) * 0 #self.rew_scales["r_action_clip"]
 
-        total_reward = (rew_collision  + rew_jump + rew_lateral_pos + rew_accend + rew_spin) * self.rew_scales["total"]
+        total_reward = (rew_collision  + rew_jump + rew_lateral_pos + rew_accend + rew_spin + rew_action_clip) * self.rew_scales["total"]
        
         # Save last values
         self.last_actions = self.actions.clone()
@@ -504,7 +504,7 @@ class HighJumpTask(RLTask):
         self.extras["detailed_rewards/lateral_pos"] = rew_lateral_pos[self._stage_buf!=1].detach().mean()
         self.extras["detailed_rewards/accend"] = rew_accend[self._stage_buf==1].detach().mean()
         self.extras["detailed_rewards/power"] = rew_power.detach().mean()
-        #self.extras["detailed_rewards/action_clip"] = rew_action_clip.detach().mean()
+        self.extras["detailed_rewards/action_clip"] = rew_action_clip.detach().mean()
         #self.extras["detailed_rewards/joint_acc"] = rew_joint_acc.detach().mean()
         #self.extras["detailed_rewards/stepping"] = rew_stepping.detach().mean()
         self.extras["metrics/est_height_0"] = (self._est_height_buf[self._takeoff_buf.logical_and(self._curriculum_level==0)]).mean()
