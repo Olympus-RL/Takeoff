@@ -89,8 +89,8 @@ def parse_hydra_configs(cfg: DictConfig):
         cfg.task.env.numEnvs = 16
         cfg.train.params.config.minibatch_size = 384
         cfg.enable_livestream = True
-        cfg.checkpoint = '/Olympus-ws/Takeoff/runs/HighJump/HighJump_squat_only_very_good.pth'
-        cfg.train.params.load_path = cfg.checkpoint
+        #cfg.checkpoint = 'runs/HighJump/nn/last_HighJump_ep_350_rew_0.31883028.pth'
+        #cfg.train.params.load_path = cfg.checkpoint
     else:
         cfg.checkpoint = ''
         cfg.train.params.load_checkpoint = False
