@@ -7,7 +7,7 @@ env:
   numEnvs: ${resolve_default:4096,${...num_envs}} # 16, 128, 1280, 2048
   envSpacing: 4.  # [m]
 
-  clipObservations: 10.0
+  clipObservations: 10000.0
   clipActions: 10000.0
 
   controlFrequencyInv: 8 #old 2

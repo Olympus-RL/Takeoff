@@ -9,6 +9,7 @@ class OlympusForwardKinematics(torch.jit.ScriptModule):
         # Constants
         self._height_paw = 0.075
         self._device = device
+        self._dist_motorhousing = 0.5
 
         # Frame positions
         self._front_motor_mhf = torch.tensor([0.0, 0.0, 0.0], device=self._device)
@@ -37,6 +38,36 @@ class OlympusForwardKinematics(torch.jit.ScriptModule):
         k_outer, k_inner, paw_attachment_mhf = self._calculate_knee_angles(squat_angle, squat_angle)
         h = -paw_attachment_mhf[:, -1] + self._height_paw
         return k_outer, k_inner, h
+
+    @torch.jit.script_method
+    def get_pitch_and_knee_angels_from_transversal(self,q_ff,q_fb,q_bf,q_bb) -> Tuple[Tensor, Tensor, Tensor, Tensor,Tensor]:
+        """
+        Calcualtes the pitch angle and the knee angles for a given transversal configuration.
+        Assumes symmetry between left and right side, and zero latteral angle.
+
+        Args:
+            q_ff: The front front_transversal angle in radians.
+            q_fb: The front back_transversal angle in radians.
+            q_bf: The back front_transversal angle in radians.
+            q_bb: The back back_transversal angle in radians.
+
+        returns:
+            pitch: The pitch angle in radians.
+            k_ff: The front front knee angle in radians.
+            k_fb: The front back knee angle in radians.
+            k_bf: The back front knee angle in radians.
+            k_bb: The back back knee angle in radians.
+
+        """
+        k_ff,k_fb,r_mh_paw_front=  self._calculate_knee_angles(q_ff,q_fb)
+        k_bb,k_bf,r_mh_paw_back =  self._calculate_knee_angles(q_bb,q_bf)
+
+        dh = r_mh_paw_front[:, -1] - r_mh_paw_back[:, -1] 
+        pitch = torch.acos(dh/self._dist_motorhousing)
+        return pitch,k_ff,k_fb,k_bf,k_bb
+
+
+        
 
     @torch.jit.script_method
     def _calculate_knee_angles(self, q_front: Tensor, q_back: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
