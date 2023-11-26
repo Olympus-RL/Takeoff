@@ -104,10 +104,10 @@ class HighJumpTask(RLTask):
         self._init_upward_velocity_sampler = Uniform(init_upward_velocity_limits[0], init_upward_velocity_limits[1])
 
         # curiculum
-        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,5.1], device=self._device).deg2rad()
-        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,10.0], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,5.1,5.1], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,10.0,10.0], device=self._device).deg2rad()
         self._curriculum_tresh = 0.05
-        self._n_curriculum_levels = 2
+        self._n_curriculum_levels = 3
         self._steps_per_curriculum_level = 5
 
         self._obs_count = 0
@@ -477,16 +477,11 @@ class HighJumpTask(RLTask):
         ### Regualization Rewards ###
         rew_lateral_pos = -torch.sum(motor_joint_pos[:,self.lateral_indicies]**2,dim=-1)*3#self.rew_scales["r_lateral_pos"]
         rew_lateral_pos[self._stage_buf==1] = 0
-        
-        
-        torque = (self.Kp*(self._current_clamped_targets - motor_joint_pos) - self.Kd * motor_joint_vel).clamp(min=-self.max_torque, max=self.max_torque)
-        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt*0.001
-        rew_power = -power*0.1
+       
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
         rew_joint_acc = -((joint_acc.abs()-0.1).clamp(min=0)**2).sum(dim=-1)* 0.000000001# self.rew_scales["r_joint_acc"]
         rew_collision = -10*self._collision_buf.float()#this should come from config 
  
-        rew_joint_vel = -(motor_joint_vel.abs()-self._motor_cutoff_speed).clamp(min=0).mean(dim=1) *10
 #
         rew_symmetry = -(
             (motor_joint_pos[:,self._sym_0_indicies[0]] - motor_joint_pos[:,self._sym_0_indicies[1]])**2 +
@@ -498,9 +493,22 @@ class HighJumpTask(RLTask):
         )*0.1
         rew_spin = -torch.sum(ang_velocity**2, dim=1)*4
         rew_spin[~self._takeoff_buf] = 0
+
+
+        ### last regualization rewards ###
+        torque = (self.Kp*(self._current_clamped_targets - motor_joint_pos) - self.Kd * motor_joint_vel).clamp(min=-self.max_torque, max=self.max_torque)
+        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt*0.001
+        rew_power = -power*0.1
+        rew_joint_vel = -(motor_joint_vel.abs()-self._motor_cutoff_speed).clamp(min=0).mean(dim=1) *10
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1))  #self.rew_scales["r_action_clip"]
 
-        total_reward = (3*rew_jump + rew_lateral_pos + rew_accend + rew_spin  + rew_joint_acc  + rew_power) * self.rew_scales["total"]
+        rew_last_reg = rew_power + rew_joint_vel + rew_action_clip + 100*rew_joint_acc
+        rew_last_reg[~(self._curriculum_level==self._n_curriculum_levels-1)] = 0
+
+        total_reward = (3*rew_jump + rew_lateral_pos + rew_accend + rew_spin  + rew_joint_acc + rew_last_reg) * self.rew_scales["total"]
+
+
+        
 
        
         # Save last values
@@ -513,6 +521,7 @@ class HighJumpTask(RLTask):
 
         # update extras
         terminate_mask = self._steps_since_takeoff_buf >= self._max_steps_after_take_off
+        self.extras["detailed_rewards/last_reg"] = rew_last_reg.detach().mean() 
 
         self.extras["detailed_rewards/collision"] = rew_collision.detach().mean()
         self.extras["detailed_rewards/orient"] = rew_orient.detach().mean()
@@ -553,7 +562,6 @@ class HighJumpTask(RLTask):
             time_out = torch.logical_or(self.progress_buf >= self.max_episode_length - 1,self._steps_since_takeoff_buf >=self._max_steps_after_take_off)
         else:
             time_out = (self.progress_buf >= self.max_episode_length - 1)
-        # TODO: Collision detection
         motor_joint_pos = self._olympusses.get_joint_positions(clone=False, joint_indices=self._actuated_indicies)
         motor_joint_pos_clamped = self._clamp_joint_angels(motor_joint_pos)
         motor_joint_violations = (torch.abs(motor_joint_pos - motor_joint_pos_clamped) > torch.pi/180).any(dim=1)
