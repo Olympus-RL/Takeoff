@@ -474,8 +474,8 @@ class LongJumpTask(RLTask):
         
         
         torque = (self.Kp*(self._current_clamped_targets - motor_joint_pos) - self.Kd * motor_joint_vel).clamp(min=-self.max_torque, max=self.max_torque)
-        power = torch.sum(torque * motor_joint_vel, dim=1)
-        rew_power = -power**2*1e-5
+        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt
+        rew_power = -power**2*0.1
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
         rew_joint_acc = -((joint_acc.abs()-0.1).clamp(min=0)**2).sum(dim=-1)* 0.000000001# self.rew_scales["r_joint_acc"]
         rew_stepping = -torch.norm(self._contact_states-self._last_contact_state, dim=1,p=1)*0.0#self.rew_scales["r_stepping"]
@@ -495,7 +495,7 @@ class LongJumpTask(RLTask):
         rew_spin[~self._takeoff_buf] = 0
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1)) * 0 #self.rew_scales["r_action_clip"]
 
-        total_reward = (2*rew_jump + rew_lateral_pos + rew_accend + rew_spin + rew_action_clip + rew_joint_acc*0) * self.rew_scales["total"]
+        total_reward = (3*(rew_jump  + rew_accend) + rew_lateral_pos + rew_spin  + rew_joint_acc) * self.rew_scales["total"]
 
        
         # Save last values

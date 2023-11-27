@@ -497,8 +497,8 @@ class HighJumpTask(RLTask):
 
         ### last regualization rewards ###
         torque = (self.Kp*(self._current_clamped_targets - motor_joint_pos) - self.Kd * motor_joint_vel).clamp(min=-self.max_torque, max=self.max_torque)
-        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt*0.001
-        rew_power = -power*0.1
+        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt
+        rew_power = -power*0.01
         rew_joint_vel = -(motor_joint_vel.abs()-self._motor_cutoff_speed).clamp(min=0).mean(dim=1) *10
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1))  #self.rew_scales["r_action_clip"]
 
@@ -509,7 +509,7 @@ class HighJumpTask(RLTask):
 
 
         
-
+        #print("rew_power:", rew_power.mean().item())
        
         # Save last values
         self.last_actions = self.actions.clone()
