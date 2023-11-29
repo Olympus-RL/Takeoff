@@ -491,7 +491,7 @@ class LongJumpTask(RLTask):
             (motor_joint_pos[:,self._sym_4_indicies[0]] - motor_joint_pos[:,self._sym_4_indicies[1]])**2 +
             (motor_joint_pos[:,self._sym_5_indicies[0]] - motor_joint_pos[:,self._sym_5_indicies[1]])**2
         )*0.1
-        rew_spin = -torch.sum(ang_velocity**2, dim=1)*4
+        rew_spin = -torch.norm(ang_velocity**2, dim=1)*8
         rew_spin[~self._takeoff_buf] = 0
         rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1)) * 0 #self.rew_scales["r_action_clip"]
 

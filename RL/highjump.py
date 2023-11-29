@@ -1,3 +1,4 @@
+from typing import Tuple
 import torch
 from torch import Tensor
 from torch.distributions import Uniform
@@ -68,7 +69,10 @@ class HighJumpTask(RLTask):
         self.max_torque = self._task_cfg["env"]["control"]["max_torque"]
         self._motor_cutoff_speed = 350/30*torch.pi #self._task_cfg["env"]["control"]["motorCutoffFreq"]
         self._motor_degration_speed = 225/30*torch.pi #self._task_cfg["env"]["control"]["motorDegradationFreq"]
-
+        self._ema_cut_off_freq = torch.tensor(5.0)#hz
+        self._ema_alpha = 1 - torch.exp(-1/(self._ema_cut_off_freq*self._step_dt))
+        self._ema_alpha = torch.tensor(0.9)
+        print("ema alpha", self._ema_alpha)
 
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._olympus_translation = torch.tensor(self._task_cfg["env"]["baseInitState"]["pos"])
@@ -104,13 +108,15 @@ class HighJumpTask(RLTask):
         self._init_upward_velocity_sampler = Uniform(init_upward_velocity_limits[0], init_upward_velocity_limits[1])
 
         # curiculum
-        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,5.1,5.1], device=self._device).deg2rad()
-        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,10.0,10.0], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,10.0,5.1], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,20.0,10.0], device=self._device).deg2rad()
         self._curriculum_tresh = 0.05
         self._n_curriculum_levels = 3
         self._steps_per_curriculum_level = 5
 
         self._obs_count = 0
+
+        self._ema_alpha.to(self._device)
 
         return
 
@@ -209,6 +215,7 @@ class HighJumpTask(RLTask):
         height = base_position[:, -1]
         self._contact_states, self._collision_buf = self._olympusses.get_contact_state_collisionbuf()
         self._collision_buf = self._collision_buf.logical_or(height < 0.175)
+        self._paw_height = self._olympusses.get_paw_heights()
         
         
         is_airborne = torch.all(self._contact_states == 0, dim=1)
@@ -299,8 +306,11 @@ class HighJumpTask(RLTask):
             self.reset_idx(reset_env_ids)
 
         # lineraly interpolate between min and max
-        self._current_policy_targets = (0.5 * (self._motor_joint_upper_limits - self._motor_joint_lower_limits) * actions +
+        new_targets = (0.5 * (self._motor_joint_upper_limits - self._motor_joint_lower_limits) * actions +
                                         0.5 * (self._motor_joint_lower_limits + self._motor_joint_upper_limits))
+        
+        #apply ema filter
+        self._current_policy_targets = self._ema_alpha * new_targets + (1-self._ema_alpha) * self._current_policy_targets
 
         #clamp targets to joint limits and to collision free config
         self._current_action = actions.clone()  
@@ -331,18 +341,18 @@ class HighJumpTask(RLTask):
         self._target_height[env_ids] = targets
         
         #if we are in training mode we sample random initial state
-        if True: #not self._is_test:
-            #sample squat angle
-            lower = self._curriculum_init_squat_angle_lower[self._curriculum_level[env_ids]]
-            upper = self._curriculum_init_squat_angle_upper[self._curriculum_level[env_ids]]
-            squat_angles = sample_squat_angle(lower, upper)
-            k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
+        
+        lower = self._curriculum_init_squat_angle_lower[self._curriculum_level[env_ids]]
+        upper = self._curriculum_init_squat_angle_upper[self._curriculum_level[env_ids]]
+        squat_angles = sample_squat_angle(lower, upper)
+        k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
+        
 
-            #Set initial joint states
-            dof_pos[:, self._transversal_indicies] = squat_angles.unsqueeze(-1)
-            dof_pos[:, self._knee_outer_indicies] = k_outer.unsqueeze(-1)
-            dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
-            root_pos[:, 2] = (init_heights-0.01)
+        #Set initial joint states
+        dof_pos[:, self._transversal_indicies] = squat_angles.unsqueeze(-1)
+        dof_pos[:, self._knee_outer_indicies] = k_outer.unsqueeze(-1)
+        dof_pos[:, self._knee_inner_indicies] = k_inner.unsqueeze(-1)
+        root_pos[:, 2] = (init_heights-0.01)
         ##
         # Apply resets
         indices = env_ids.to(dtype=torch.int32)
@@ -352,6 +362,7 @@ class HighJumpTask(RLTask):
         self._olympusses.set_velocities(root_vel, indices)
         # Bookkeeping
         self._current_clamped_targets[env_ids] = dof_pos[:,self._actuated_indicies]
+        self._current_policy_targets[env_ids] = dof_pos[:,self._actuated_indicies]
         self.reset_buf[env_ids] = False
         self.progress_buf[env_ids] = 0
         self.last_actions[env_ids] = 0.0
@@ -441,6 +452,7 @@ class HighJumpTask(RLTask):
         self._steps_since_takeoff_buf = torch.zeros(self._num_envs, dtype=torch.long, device=self._device)
         self._target_height = torch.zeros(self._num_envs, dtype=torch.float, device=self._device)
         self._current_clamped_targets = torch.zeros((self._num_envs, self._num_actuated), dtype=torch.float, device=self._device)
+        self._current_policy_targets = torch.zeros((self._num_envs, self._num_actuated), dtype=torch.float, device=self._device)
         # reset all envs
         indices = torch.arange(self._olympusses.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -460,6 +472,8 @@ class HighJumpTask(RLTask):
         rew_jump = laplacian_kernel_1d((self._est_height_buf-self._target_height)/self._target_height,1)*400 #self.rew_scales["r_jump"]
         rew_jump[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
         rew_jump[self._collision_buf] = 0 
+        rew_jump[self._est_height_buf < 0.6] = 0
+
 
       
         orient_error = quat_diff_rad(base_rotation, self._target_rotation)
@@ -473,14 +487,28 @@ class HighJumpTask(RLTask):
         #rew_accend[self._stage_buf != 1] = 0  # only give accend reward when flying
         rew_accend[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
         rew_accend[self._collision_buf] = 0
+        rew_accend[self._est_height_buf < 0.6] = 0
+
+        exit_angle = calculate_exit_angle(velocity)
+        rew_exit_angle = exp_kernel_1d(torch.pi/2 - exit_angle, 0.1) * 10 #self.rew_scales["r_exit_angle"]
+        rew_exit_angle[~self._takeoff_buf] = 0  # only give exit angle reward when flying
+
+        rew_jump_potential = (exp_kernel_1d(base_position[:,-1]-0.3,0.17)) * 5
+        rew_up_vel = velocity[:,2].clamp(min=0)**2 * 0.1
+        rew_jump_potential[self._stage_buf == 1] = 0  
+        rew_up_vel[self._stage_buf == 1] = 0  
+
+
+
         
         ### Regualization Rewards ###
         rew_lateral_pos = -torch.sum(motor_joint_pos[:,self.lateral_indicies]**2,dim=-1)*3#self.rew_scales["r_lateral_pos"]
         rew_lateral_pos[self._stage_buf==1] = 0
        
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
-        rew_joint_acc = -((joint_acc.abs()-0.1).clamp(min=0)**2).sum(dim=-1)* 0.000000001# self.rew_scales["r_joint_acc"]
+        rew_joint_acc = -((joint_acc.abs()-0.01).clamp(min=0)**2).sum(dim=-1)* 0.0000001# self.rew_scales["r_joint_acc"]
         rew_collision = -10*self._collision_buf.float()#this should come from config 
+    
  
 #
         rew_symmetry = -(
@@ -491,25 +519,33 @@ class HighJumpTask(RLTask):
             (motor_joint_pos[:,self._sym_4_indicies[0]] - motor_joint_pos[:,self._sym_4_indicies[1]])**2 +
             (motor_joint_pos[:,self._sym_5_indicies[0]] - motor_joint_pos[:,self._sym_5_indicies[1]])**2
         )*0.1
-        rew_spin = -torch.sum(ang_velocity**2, dim=1)*4
+        rew_spin = (10-torch.norm(ang_velocity, dim=1))*80
         rew_spin[~self._takeoff_buf] = 0
+        rew_spin[self._est_height_buf < 1] = 0
+
+        rew_contact = (self._contact_states == 1).all(dim=1).float()
+        rew_contact[~(self._stage_buf==0)] = 0
+
+        rew_paw_height = exp_kernel_1d(torch.sum(self._paw_height**2,dim=1),0.1)*10
+        rew_paw_height[self._stage_buf==1] = 0
 
 
         ### last regualization rewards ###
         torque = (self.Kp*(self._current_clamped_targets - motor_joint_pos) - self.Kd * motor_joint_vel).clamp(min=-self.max_torque, max=self.max_torque)
-        power = torch.sum(torque * motor_joint_vel, dim=1)*self._step_dt
-        rew_power = -power*0.01
-        rew_joint_vel = -(motor_joint_vel.abs()-self._motor_cutoff_speed).clamp(min=0).mean(dim=1) *10
-        rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1))  #self.rew_scales["r_action_clip"]
+        power = (torque * motor_joint_vel)
+        rew_power = (1-power.abs()/300).mean(dim=1)*2
+        #rew_joint_vel = -((motor_joint_vel.abs()-self._motor_cutoff_speed*0.5).clamp(min=0)**2).mean(dim=1)*0.001
+        rew_joint_vel = (1-motor_joint_vel.abs()/(0.5*self._motor_cutoff_speed)).mean(dim=1)*2
+        rew_action_clip = -(torch.sum((self._current_policy_targets - self._current_clamped_targets)**2, dim=1))*0.1  #self.rew_scales["r_action_clip"]
+        rew_action_clip[~self._is_initilized_buf] = 0
+        rew_action_clip[self._stage_buf==1] = 0
 
         rew_last_reg = rew_power + rew_joint_vel + rew_action_clip + 100*rew_joint_acc
         rew_last_reg[~(self._curriculum_level==self._n_curriculum_levels-1)] = 0
 
-        total_reward = (3*rew_jump + rew_lateral_pos + rew_accend + rew_spin  + rew_joint_acc + rew_last_reg) * self.rew_scales["total"]
-
+        total_reward = (3*(rew_jump + rew_accend) + 2*rew_spin  + rew_joint_acc*0+ rew_power*0+ rew_contact + rew_paw_height + rew_lateral_pos) * self.rew_scales["total"]
 
         
-        #print("rew_power:", rew_power.mean().item())
        
         # Save last values
         self.last_actions = self.actions.clone()
@@ -521,8 +557,13 @@ class HighJumpTask(RLTask):
 
         # update extras
         terminate_mask = self._steps_since_takeoff_buf >= self._max_steps_after_take_off
-        self.extras["detailed_rewards/last_reg"] = rew_last_reg.detach().mean() 
+        self.extras["detailed_rewards/paw_height"] = rew_paw_height[self._stage_buf==0].detach().mean()
+        self.extras["detailed_rewards/jump_potential_0"] = rew_jump_potential[(self._stage_buf==0).logical_and(self._curriculum_level==0)].detach().mean()
+        self.extras["detailed_rewards/jump_potential_12"] = rew_jump_potential[(self._stage_buf==0).logical_and(self._curriculum_level!=0)].detach().mean()
+        self.extras["detailed_rewards/up_vel"] = rew_up_vel[self._stage_buf==0].detach().mean()
 
+        self.extras["detailed_rewards/last_reg"] = rew_last_reg.detach().mean() 
+        self.extras["detailed_rewards/contact"] = rew_contact[self._stage_buf==0].detach().mean()
         self.extras["detailed_rewards/collision"] = rew_collision.detach().mean()
         self.extras["detailed_rewards/orient"] = rew_orient.detach().mean()
         self.extras["detailed_rewards/jump"]= rew_jump[terminate_mask].detach().mean()
@@ -551,7 +592,7 @@ class HighJumpTask(RLTask):
         self.extras["curriculum/level_3_fraq"] = (self._curriculum_level==3).float().mean()
            
         
-        exit_angle = calculate_exit_angle(velocity)
+       
         self.extras["metrics/exit_angle"] = exit_angle[self._takeoff_buf].mean()
    
     
@@ -616,7 +657,15 @@ class HighJumpTask(RLTask):
         a = -self.max_torque/(self._motor_cutoff_speed-self._motor_degration_speed)
         b = -a*self._motor_cutoff_speed
         return (a*joint_velocities.abs() + b).clamp(min=0,max=self.max_torque)
-
+    
+    def _init_config(self,i) -> Tuple[Tensor,Tensor]:
+        #sample squat angle
+        lower = self._curriculum_init_squat_angle_lower
+        upper = self._curriculum_init_squat_angle_upper
+        squat_angles = sample_squat_angle(lower, upper)
+        k_outer, k_inner, init_heights = self._forward_kin.get_squat_configuration(squat_angles)
+        #sample height target 
+        targets = 2*torch.rand((self._num_envs), device=self._device) + 1.5
         
 
 

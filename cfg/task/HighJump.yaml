@@ -67,7 +67,7 @@ env:
     rPosTrackingRewardScale: 1.0
     rSquatRewardScale: 3.0
     # episode length in seconds
-    episodeLength_s: 5.0
+    episodeLength_s: 3.0
 
 sim:
   dt: 0.00208

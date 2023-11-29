@@ -308,15 +308,5 @@ class OlympusView(ArticulationView):
         #)
         return contact_state
     
-    #def get_fallen_buf(self) -> Tensor:
-    #    #base_pos, _ = self.get_world_poses()
-    #    #base_heights = base_pos[:, 2]
-    #    #return base_heights[:] < 0.19
-    #    fallen_buf = torch.zeros(self._count, dtype=torch.bool, device=self._device)
-    #    for prim in self.rigid_prims:
-    #        if "Paw" in prim.name or "Motor" in prim.name:
-    #            continue
-    #        z = prim.get_world_poses()[0][:,2]
-    #        
-    #        fallen_buf = fallen_buf.logical_or(z < 0.05)
-    #    return fallen_buf
+    def get_paw_heights(self) -> Tensor:
+        return torch.cat([paw.get_world_poses()[0][:,[2]] for paw in self._paws],dim=-1)
