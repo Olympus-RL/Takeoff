@@ -108,10 +108,10 @@ class HighJumpTask(RLTask):
         self._init_upward_velocity_sampler = Uniform(init_upward_velocity_limits[0], init_upward_velocity_limits[1])
 
         # curiculum
-        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,90,5.1], device=self._device).deg2rad()
-        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,120.0,10.0], device=self._device).deg2rad()
-        self._curriculum_init_base_height_lower = torch.tensor([0.0,0.10,0.0], device=self._device)
-        self._curriculum_init_base_heigt_upper = torch.tensor([0.0,0.30,0.0], device=self._device)
+        self._curriculum_init_squat_angle_lower = torch.tensor([90.0,5.1,5.1], device=self._device).deg2rad()
+        self._curriculum_init_squat_angle_upper = torch.tensor([120.0,10.0,10.0], device=self._device).deg2rad()
+        self._curriculum_init_base_height_lower = torch.tensor([0.0,0,0.0], device=self._device)
+        self._curriculum_init_base_heigt_upper = torch.tensor([0.0,0,0.0], device=self._device)
         self._curriculum_tresh = 0.05
         self._n_curriculum_levels = 3
         self._steps_per_curriculum_level = 5
@@ -496,14 +496,11 @@ class HighJumpTask(RLTask):
         rew_accend[self._est_height_buf < 0.6] = 0
 
         exit_angle = calculate_exit_angle(velocity)
-        rew_exit_angle = (2*torch.pi/180-(torch.pi/2 - exit_angle).abs())*200 #self.rew_scales["r_exit_angle"]
+        rew_exit_angle = (3*torch.pi/180-(torch.pi/2 - exit_angle).abs())*500 #self.rew_scales["r_exit_angle"]
         rew_exit_angle[~self._takeoff_buf] = 0  # only give exit angle reward when flying
 
-        rew_jump_potential = (exp_kernel_1d(base_position[:,-1]-0.3,0.17)) * 5
-        rew_up_vel = velocity[:,2].clamp(min=0)**2 * 0.1
-        rew_jump_potential[self._stage_buf == 1] = 0  
-        rew_up_vel[self._stage_buf == 1] = 0  
-
+        rew_inside_threshold = ((self._est_height_buf - self._target_height).abs() < 0.02).float() *5000
+        rew_inside_threshold[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
 
 
         
@@ -512,19 +509,12 @@ class HighJumpTask(RLTask):
         rew_lateral_pos[self._stage_buf==1] = 0
        
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
-        rew_joint_acc = -((joint_acc.abs()-0.01).clamp(min=0)**2).sum(dim=-1)* 0.0000001# self.rew_scales["r_joint_acc"]
+        rew_joint_acc = -((joint_acc.abs()-0.01).clamp(min=0)**2).sum(dim=-1)* 0.00000001# self.rew_scales["r_joint_acc"]
         rew_collision = -10*self._collision_buf.float()#this should come from config 
     
  
 #
-        symmetri_metric = (
-            (motor_joint_pos[:,self._sym_0_indicies[0]] - motor_joint_pos[:,self._sym_0_indicies[1]])**2 +
-            (motor_joint_pos[:,self._sym_1_indicies[0]] - motor_joint_pos[:,self._sym_1_indicies[1]])**2 +
-            (motor_joint_pos[:,self._sym_2_indicies[0]] - motor_joint_pos[:,self._sym_2_indicies[1]])**2 +
-            (motor_joint_pos[:,self._sym_3_indicies[0]] - motor_joint_pos[:,self._sym_3_indicies[1]])**2 +
-            (motor_joint_pos[:,self._sym_4_indicies[0]] - motor_joint_pos[:,self._sym_4_indicies[1]])**2 +
-            (motor_joint_pos[:,self._sym_5_indicies[0]] - motor_joint_pos[:,self._sym_5_indicies[1]])**2
-        )
+        symmetri_metric = motor_joint_pos[:,self._transversal_indicies].var(dim=1)
         rew_symmetry = exp_kernel_1d(symmetri_metric,0.2)*1
         rew_spin = (10-torch.norm(ang_velocity, dim=1))*80
         rew_spin[~self._takeoff_buf] = 0
@@ -550,7 +540,7 @@ class HighJumpTask(RLTask):
         rew_last_reg = rew_power + rew_joint_vel + rew_action_clip + 100*rew_joint_acc
         rew_last_reg[~(self._curriculum_level==self._n_curriculum_levels-1)] = 0
 
-        total_reward = (3*(rew_jump + rew_accend) + 2*rew_spin  + rew_joint_acc*0+ rew_power*0+ rew_contact + rew_paw_height + rew_lateral_pos + rew_exit_angle + rew_symmetry) * self.rew_scales["total"]
+        total_reward = (3*(rew_jump + rew_accend) + 2*rew_spin + rew_joint_acc+ rew_power+ rew_contact + rew_paw_height + rew_lateral_pos + rew_exit_angle + rew_symmetry) * self.rew_scales["total"]
 
         
        
@@ -565,9 +555,7 @@ class HighJumpTask(RLTask):
         # update extras
         terminate_mask = self._steps_since_takeoff_buf >= self._max_steps_after_take_off
         self.extras["detailed_rewards/paw_height"] = rew_paw_height[self._stage_buf==0].detach().mean()
-        self.extras["detailed_rewards/jump_potential_0"] = rew_jump_potential[(self._stage_buf==0).logical_and(self._curriculum_level==0)].detach().mean()
-        self.extras["detailed_rewards/jump_potential_12"] = rew_jump_potential[(self._stage_buf==0).logical_and(self._curriculum_level!=0)].detach().mean()
-        self.extras["detailed_rewards/up_vel"] = rew_up_vel[self._stage_buf==0].detach().mean()
+        self.extras["detailed_rewards/inside_threshold"] = rew_inside_threshold.detach().mean()
 
         self.extras["detailed_rewards/last_reg"] = rew_last_reg.detach().mean() 
         self.extras["detailed_rewards/contact"] = rew_contact[self._stage_buf==0].detach().mean()
