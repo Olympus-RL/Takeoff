@@ -36,7 +36,7 @@ params: # Docs: https://github.com/Denys88/rl_games#config-parameters
   load_path: ${...checkpoint} # path to the checkpoint to load
 
   config:
-    name: ${resolve_default:HighJump,${....experiment}}
+    name: ${resolve_default:Landing,${....experiment}}
     full_experiment_name: ${.name}
     device: ${....rl_device}
     device_name: ${....rl_device}

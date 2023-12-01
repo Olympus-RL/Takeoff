@@ -4,10 +4,10 @@ name: LongJump
 physics_engine: ${..physics_engine}
 
 env:
-  numEnvs: ${resolve_default:2048,${...num_envs}} # 16, 128, 1280, 2048
+  numEnvs: ${resolve_default:4096,${...num_envs}} # 16, 128, 1280, 2048
   envSpacing: 4.  # [m]
 
-  clipObservations: 10.0
+  clipObservations: 10000.0
   clipActions: 10000.0
 
   controlFrequencyInv: 8 #old 2
@@ -49,7 +49,7 @@ env:
   
   # Joint limits
   jointLimits:
-    lateralMotor              : [-10, 200]  # [deg]
+    lateralMotor              : [-120, 10]  # [deg]
     transversalMotor          : [-50, 180]  # [deg]
     minTransversalMotorSum   : 10         # [deg]
     maxTransversalMotorSum   : 220          # [deg]
@@ -67,7 +67,7 @@ env:
     rPosTrackingRewardScale: 1.0
     rSquatRewardScale: 3.0
     # episode length in seconds
-    episodeLength_s: 6.0
+    episodeLength_s: 3.0
 
 sim:
   dt: 0.00208

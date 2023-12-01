@@ -121,10 +121,10 @@ def parse_hydra_configs(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic)
     cfg_dict["seed"] = cfg.seed
 
-    from RL import HighJumpTask, LongJumpTask
+    from RL import HighJumpTask, LongJumpTask, LandingTask
     from omniisaacgymenvs.utils.config_utils.sim_config import SimConfig
 
-    task_dict = {"HighJump": HighJumpTask, "LongJump": LongJumpTask}
+    task_dict = {"HighJump": HighJumpTask, "LongJump": LongJumpTask, "Landing": LandingTask}
 
     sim_config = SimConfig(cfg_dict)
     task = task_dict[cfg_dict["task_name"]](name=cfg_dict["task_name"], sim_config=sim_config, env=env)
