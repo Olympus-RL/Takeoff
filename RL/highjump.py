@@ -499,8 +499,10 @@ class HighJumpTask(RLTask):
         rew_exit_angle = (3*torch.pi/180-(torch.pi/2 - exit_angle).abs())*500 #self.rew_scales["r_exit_angle"]
         rew_exit_angle[~self._takeoff_buf] = 0  # only give exit angle reward when flying
 
-        rew_inside_threshold = ((self._est_height_buf - self._target_height).abs() < 0.02).float() *1000
+        rew_inside_threshold = ((self._est_height_buf - self._target_height).abs() < 0.02).float() * 10000
         rew_inside_threshold[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
+        rew_inside_threshold[ang_velocity.norm(dim=1) > 0.7] = 0
+        rew_inside_threshold[(exit_angle-torch.pi/2).rad2deg() > 1] = 0
 
 
         
