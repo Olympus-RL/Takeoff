@@ -483,7 +483,7 @@ class HighJumpTask(RLTask):
 
       
         orient_error = quat_diff_rad(base_rotation, self._target_rotation)
-        rew_orient = exp_kernel_1d(orient_error, torch.pi/2) * 10 #self.rew_scales["r_orient"]
+        rew_orient = exp_kernel_1d(orient_error,0.1) * 10 #self.rew_scales["r_orient"]
         rew_orient[self._stage_buf != 1] = 0  # only give orient reward when flying
         rew_land_stand = exp_kernel_3d(base_position-self._land_pos_buf, 0.1) * 0.1 #self.rew_scales["r_land_stand"]
         rew_land_stand[self._stage_buf != 2] = 0  # only give land stand reward when landing
@@ -501,7 +501,7 @@ class HighJumpTask(RLTask):
 
         rew_inside_threshold = ((self._est_height_buf - self._target_height).abs() < 0.02).float() * 10000
         rew_inside_threshold[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
-        rew_inside_threshold[ang_velocity.norm(dim=1) > 0.7] = 0
+        rew_inside_threshold[ang_velocity.norm(dim=1) > 0.5] = 0
         rew_inside_threshold[(exit_angle-torch.pi/2).rad2deg() > 1] = 0
 
 
@@ -542,7 +542,18 @@ class HighJumpTask(RLTask):
         rew_last_reg = rew_power + rew_joint_vel + rew_action_clip + 100*rew_joint_acc
         rew_last_reg[~(self._curriculum_level==self._n_curriculum_levels-1)] = 0
 
-        total_reward = (3*(rew_jump + rew_accend) + 2*rew_spin + rew_inside_threshold + rew_joint_acc+ rew_power+ rew_contact + rew_paw_height + rew_lateral_pos + rew_exit_angle + rew_symmetry) * self.rew_scales["total"]
+        total_reward = (
+            3*(rew_jump + rew_accend) + 
+            3*rew_spin + 
+            rew_inside_threshold + 
+            rew_joint_acc + 
+            rew_power + 
+            rew_contact + 
+            rew_paw_height + 
+            rew_lateral_pos + 
+            rew_exit_angle + 
+            rew_symmetry + 
+        ) * self.rew_scales["total"]
 
         
        

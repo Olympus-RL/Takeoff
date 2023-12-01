@@ -427,26 +427,31 @@ class LandingTask(RLTask):
        
         rew_vel = -velocity.norm(dim=1)*0.1
         rew_ang_vel = -ang_velocity.norm(dim=1)*0.1
-        rew_bounce = -velocity[:,2].clamp(min=0)*10
+        rew_bounce = -velocity[:,2].clamp(min=0)*100
 
         torques = ((self._current_clamped_targets - motor_joint_pos) * self.Kp - motor_joint_vel * self.Kd).clamp(min=-self.max_torque, max=self.max_torque)
         power = (torques * motor_joint_vel).abs()
         rew_power = (200 - power).mean(dim=1)/300*1
-        rew_base_height = exp_kernel_1d(base_position[:,2]-0.3,0.3)*10
+        z_height = (base_position[:,2] -0.3).abs().clamp(min=0.15)
+        rew_base_height = exp_kernel_1d(z_height-0.15,0.1)*10
+
+        rew_stepping = -(self._contact_states - self._last_contact_state).norm(dim=1)*10
 
         rew_survive = torch.ones(self._num_envs, device=self._device)*0
         rew_collision = -self._collision_buf.float()*50
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
         rew_joint_acc = -((joint_acc.abs()-0.01).clamp(min=0)**2).sum(dim=-1)* 0.00000001# self.rew_scales["r_joint_acc"]
-        self._last_motor_joint_vel = motor_joint_vel.clone()
-        rew_contact = (self._contact_states==1).all(dim=1).float()*1000
+        rew_contact = (self._contact_states==1).all(dim=1).float()*1
         rew_paw_height = exp_kernel_1d(self._paw_height.mean(dim=1),0.2)*10
-        total_rew = rew_orientation + rew_vel + rew_power + rew_survive + rew_collision + rew_joint_acc + rew_contact + rew_paw_height  + rew_ang_vel + rew_base_height + rew_bounce
+        total_rew = rew_orientation + rew_vel + rew_power + rew_survive + rew_collision + rew_joint_acc + rew_contact + rew_paw_height  + rew_ang_vel + rew_base_height + rew_stepping+rew_bounce
+
+        self._last_motor_joint_vel = motor_joint_vel.clone()
 
        
         self.rew_buf = total_rew.clone()
 
         self.extras["rew_orientation"] = rew_orientation.mean()
+        self.extras["rew_stepping"] = rew_stepping.mean()
         self.extras["rew_vel"] = rew_vel.mean()
         self.extras["rew_power"] = rew_power.mean()
         self.extras["rew_survive"] = rew_survive.mean()
