@@ -683,15 +683,24 @@ def laplacian_kernel_1d(x: Tensor, sigma: float) -> Tensor:
     
 
 @torch.jit.script
-def estimate_jump_lenght_x(velocity: Tensor, g: float) -> Tensor:
-    t = 2*velocity[:,2].clamp(min=0)/g
+def estimate_jump_lenght_x(velocity: Tensor, g: float,dh: Tensor) -> Tensor:
+    vel_z = velocity[:,2]
+    under_root = vel_z**2 + 2*g*vel_z*dh
+    t = (vel_z + torch.sqrt(under_root.clamp(min=0)))/g
     x_vel = velocity[:,0].clamp(min=0)
-    return x_vel*t
+    dx = x_vel*t
+    dx[under_root < 0] = 0
+    return dx
+
 @torch.jit.script
-def estimate_jump_lenght_y(velocity: Tensor, g: float) -> Tensor:
-    t = 2*velocity[:,2].clamp(min=0)/g
-    y_vel = torch.abs(velocity[:,1])
-    return y_vel*t
+def estimate_jump_lenght_y(velocity: Tensor, g: float, dh: Tensor) -> Tensor:
+    vel_z = velocity[:,2]
+    under_root = vel_z**2 + 2*g*vel_z*dh
+    t = (vel_z + torch.sqrt(under_root.clamp(min=0)))/g
+    y_vel = velocity[:,1].clamp(min=0)
+    dy = y_vel*t
+    dy[under_root < 0] = 0
+    return dy
 
 @torch.jit.script
 def estimate_jump_height(velocity: Tensor,pos: Tensor,g: float) -> Tensor:

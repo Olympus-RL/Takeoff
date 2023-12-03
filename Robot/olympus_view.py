@@ -259,6 +259,7 @@ class OlympusView(ArticulationView):
             #self.Paw_BR,
         ]
         self._paws = [self.Paw_FL, self.Paw_FR,self.Paw_BL, self.Paw_BR]
+        self._knees = [self.FrontKnee_FL, self.BackKnee_FL, self.FrontKnee_FR, self.BackKnee_FR, self.FrontKnee_BL, self.BackKnee_BL, self.FrontKnee_BR, self.BackKnee_BR]
 
 
     def get_knee_transforms(self):
@@ -310,3 +311,5 @@ class OlympusView(ArticulationView):
     
     def get_paw_heights(self) -> Tensor:
         return torch.cat([paw.get_world_poses()[0][:,[2]] for paw in self._paws],dim=-1)
+    def get_knee_heights(self) -> Tensor:
+        return torch.cat([knee.get_world_poses()[0][:,[2]] for knee in self._knees],dim=-1)

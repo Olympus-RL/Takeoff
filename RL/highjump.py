@@ -552,7 +552,7 @@ class HighJumpTask(RLTask):
             rew_paw_height + 
             rew_lateral_pos + 
             rew_exit_angle + 
-            rew_symmetry + 
+            rew_symmetry
         ) * self.rew_scales["total"]
 
         
