@@ -23,7 +23,7 @@ params: # Docs: https://github.com/Denys88/rl_games#config-parameters
         fixed_sigma: True
 
     mlp:
-      units: [256, 128, 64]
+      units: [128, 64, 64]
       activation: elu
       d2rl: False
 
@@ -36,7 +36,7 @@ params: # Docs: https://github.com/Denys88/rl_games#config-parameters
   load_path: ${...checkpoint} # path to the checkpoint to load
 
   config:
-    name: ${resolve_default:Olympus,${....experiment}}
+    name: ${resolve_default:LongJump,${....experiment}}
     full_experiment_name: ${.name}
     device: ${....rl_device}
     device_name: ${....rl_device}
@@ -66,9 +66,9 @@ params: # Docs: https://github.com/Denys88/rl_games#config-parameters
     critic_coef: 2
     clip_value: True
     seq_len: 4 # only for rnn
-    bounds_loss_coef: 0.000
+    bounds_loss_coef: 0.0001
 
-    max_epochs: ${resolve_default:2000,${....max_iterations}}
+    max_epochs: ${resolve_default:3000,${....max_iterations}}
     save_best_after: 100
     score_to_win: 20000
     save_frequency: 50

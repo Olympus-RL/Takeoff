@@ -498,6 +498,7 @@ class HighJumpTask(RLTask):
         exit_angle = calculate_exit_angle(velocity)
         rew_exit_angle = (3*torch.pi/180-(torch.pi/2 - exit_angle).abs())*500 #self.rew_scales["r_exit_angle"]
         rew_exit_angle[~self._takeoff_buf] = 0  # only give exit angle reward when flying
+        rew_exit_angle[self._est_height_buf < 1] = 0
 
         rew_inside_threshold = ((self._est_height_buf - self._target_height).abs() < 0.02).float() * 10000
         rew_inside_threshold[self._steps_since_takeoff_buf < self._max_steps_after_take_off] = 0
@@ -551,7 +552,7 @@ class HighJumpTask(RLTask):
             rew_contact + 
             rew_paw_height + 
             rew_lateral_pos + 
-            rew_exit_angle + 
+            10*rew_exit_angle + 
             rew_symmetry
         ) * self.rew_scales["total"]
 
@@ -569,6 +570,7 @@ class HighJumpTask(RLTask):
         terminate_mask = self._steps_since_takeoff_buf >= self._max_steps_after_take_off
         self.extras["detailed_rewards/paw_height"] = rew_paw_height[self._stage_buf==0].detach().mean()
         self.extras["detailed_rewards/inside_threshold"] = rew_inside_threshold.detach().mean()
+        self.extras["detailed_rewards/rew_exit_angle"] = rew_exit_angle[self._takeoff_buf].detach().mean()
 
         self.extras["detailed_rewards/last_reg"] = rew_last_reg.detach().mean() 
         self.extras["detailed_rewards/contact"] = rew_contact[self._stage_buf==0].detach().mean()
