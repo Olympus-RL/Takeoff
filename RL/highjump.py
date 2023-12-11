@@ -595,15 +595,17 @@ class HighJumpTask(RLTask):
         self.extras["metrics/height_deviation_0"] = (self._est_height_buf-self._target_height)[terminate_mask.logical_and(self._curriculum_level==0)].abs().mean()
         self.extras["metrics/height_deviation_1"] = (self._est_height_buf-self._target_height)[terminate_mask.logical_and(self._curriculum_level==1)].abs().mean()
         self.extras["metrics/height_deviation_2"] = (self._est_height_buf-self._target_height)[terminate_mask.logical_and(self._curriculum_level==2)].abs().mean()
+        self.extras["metrics/height_deviation_all"] = (self._est_height_buf-self._target_height)[terminate_mask].abs().mean()
+        self.extras["metrics/take_off_ang_vel"] = ang_velocity[self._takeoff_buf].norm(dim=1).mean()
+        self.extras["metrics/exit_angle"] = exit_angle[self._takeoff_buf].mean()
         self.extras["metrics/num_takeoffs"] = self._takeoff_buf.sum()
         self.extras["curriculum/level_0_fraq"] = (self._curriculum_level==0).float().mean()
         self.extras["curriculum/level_1_fraq"] = (self._curriculum_level==1).float().mean()
         self.extras["curriculum/level_2_fraq"] = (self._curriculum_level==2).float().mean()
-        self.extras["curriculum/level_3_fraq"] = (self._curriculum_level==3).float().mean()
            
         
        
-        self.extras["metrics/exit_angle"] = exit_angle[self._takeoff_buf].mean()
+        
    
     
     def is_done(self) -> None:
