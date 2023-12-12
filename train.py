@@ -85,7 +85,7 @@ def parse_hydra_configs(cfg: DictConfig):
         cfg.task.env.numEnvs = 16
         cfg.train.params.config.minibatch_size = 384
         cfg.enable_livestream = True
-        #cfg.checkpoint = 'runs/HighJump/HighJump.pth'
+        #cfg.checkpoint = 'runs/LongJump/LongJump.pth'
         #cfg.train.params.load_path = cfg.checkpoint
     else:
         cfg.checkpoint = ''

@@ -507,8 +507,8 @@ class LongJumpTask(RLTask):
         rew_collision = -10*self._collision_buf.float()#this should come from config 
 #
         symmetri_metric = (motor_joint_pos[:,self._left_indicies] - motor_joint_pos[:,self._right_indicies]).norm(dim=-1)/4
-        rew_symmetry = exp_kernel_1d(symmetri_metric,0.2)*20
-        rew_spin = (10-torch.norm(ang_velocity, dim=1))*80
+        rew_symmetry = exp_kernel_1d(symmetri_metric,0.3)*20
+        rew_spin = (8-torch.norm(ang_velocity, dim=1))*80
         rew_spin[~self._takeoff_buf] = 0
         rew_spin[self._est_jump_length_buf < 1] = 0
 
@@ -542,7 +542,7 @@ class LongJumpTask(RLTask):
             rew_contact + 
             0.5*rew_paw_height + 
             rew_lateral_pos + 
-            0.5*rew_symmetry
+            0.25*rew_symmetry
         ) * self.rew_scales["total"]
 
         

@@ -60,7 +60,7 @@ class LandingTask(RLTask):
         self._num_envs = self._task_cfg["env"]["numEnvs"]
         self._olympus_translation = torch.tensor(self._task_cfg["env"]["baseInitState"]["pos"])
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._num_observations = 40
+        self._num_observations = 39
         self._num_actions = 12
         self._num_articulated_joints = 20
     
@@ -203,11 +203,12 @@ class LandingTask(RLTask):
         self._knee_height = self._olympusses.get_knee_heights()
         self._collision_buf = self._collision_buf.logical_or((self._knee_height < 0.1).any(dim=1))
 
+        self._landed_buf[(self._contact_states == 1).any(dim=1)] = True
+
         
         
         new_obs = torch.cat(
             (   
-                self._target_height.unsqueeze(-1),
                 motor_joint_pos,
                 motor_joint_vel,
                 base_rotation,
@@ -302,18 +303,18 @@ class LandingTask(RLTask):
         dof_pos[:, self.lateral_indicies] = lateral.view(num_resets, 4)
         
         #sample initial base state
-        vel_mag = torch.rand((num_resets), device=self._device)*(2)
-        theta = (torch.rand((num_resets), device=self._device)*(20)-10).deg2rad()
-        phi = -torch.rand((num_resets), device=self._device)*0- torch.pi/2
+        vel_mag = torch.rand((num_resets), device=self._device)*(3) + 1
+        theta = (torch.rand((num_resets), device=self._device)*(10)-5).deg2rad()
+        phi = -torch.rand((num_resets), device=self._device)*torch.pi/3
         vel_z = vel_mag*torch.sin(phi)
         vel_xy = vel_mag*torch.cos(phi)
         vel_x = vel_xy*torch.cos(theta)
         vel_y = vel_xy*torch.sin(theta)
         lin_vel = torch.stack((vel_x, vel_y, vel_z), dim=1)
         init_height = torch.rand(num_resets, device=self._device)*(0.5) + 1
-        roll = (torch.rand(num_resets, device=self._device)*20 -10).deg2rad()
-        pitch = (torch.rand(num_resets, device=self._device)*20 -10).deg2rad()
-        yaw = (torch.rand(num_resets, device=self._device)*360).deg2rad()
+        roll = (torch.rand(num_resets, device=self._device)*10 -5).deg2rad()
+        pitch = (torch.rand(num_resets, device=self._device)*10 -5).deg2rad()
+        yaw = (torch.rand(num_resets, device=self._device)*10 -5).deg2rad()
         root_rot = quat_from_euler_xyz(roll, pitch, yaw)
         #set initial base state
         root_pos[:, 2] = init_height
@@ -331,6 +332,7 @@ class LandingTask(RLTask):
         self.progress_buf[env_ids] = 0
         self.last_actions[env_ids] = 0.0
         self.last_motor_joint_vel[env_ids] = 0.0
+        self._landed_buf[env_ids] = False
         
     
     def post_reset(self):
@@ -411,6 +413,7 @@ class LandingTask(RLTask):
         self._target_height = torch.zeros(self._num_envs, dtype=torch.float, device=self._device)
         self._current_clamped_targets = torch.zeros((self._num_envs, self._num_actuated), dtype=torch.float, device=self._device)
         self._current_policy_targets = torch.zeros((self._num_envs, self._num_actuated), dtype=torch.float, device=self._device)
+        self._landed_buf = torch.zeros(self._num_envs, dtype=torch.bool, device=self._device)
         # reset all envs
         indices = torch.arange(self._olympusses.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
@@ -428,17 +431,27 @@ class LandingTask(RLTask):
         orient_error = quat_diff_rad(base_rotation,self._zero_rotation)
         rew_orientation = exp_kernel_1d(orient_error,0.5)*10
        
-        rew_vel = (5-velocity[:,:2].norm(dim=1))*5
-        rew_ang_vel = (5-ang_velocity.norm(dim=1))*0.1
-        rew_bounce = -velocity[:,2].clamp(min=0)*1
+        rew_vel = (0.2-velocity[:,:2].norm(dim=1))*5
+        rew_vel[~self._landed_buf] = 0
+        rew_vel[base_position[:,2] > 0.6] = 0
+        rew_ang_vel = (0.2-ang_velocity.norm(dim=1))*0.1
+        rew_bounce = -velocity[:,2].clamp(min=0)*20
 
         torques = ((self._current_clamped_targets - motor_joint_pos) * self.Kp - motor_joint_vel * self.Kd).clamp(min=-self.max_torque, max=self.max_torque)
+        rew_torque = exp_kernel_1d(torques.norm(dim=1)/12,6)*10
+        rew_torque[~self._landed_buf] = 0
+        rew_torque[base_position[:,2] > 0.6] = 0
         power = (torques * motor_joint_vel).abs()
         rew_power = (200 - power).mean(dim=1)/300*1
-        z_height = (base_position[:,2] -0.3).abs().clamp(min=0.15)
-        rew_base_height = exp_kernel_1d(z_height-0.15,0.1)*20
+        rew_base_height = exp_kernel_1d(base_position[:,-1]-0.35,0.15)*1
+        rew_base_height[~self._landed_buf] = 0
+
+        rew_latteral = exp_kernel_1d(motor_joint_pos[:,self.lateral_indicies].sum(dim=1)/4,0.1)*1
+        rew_latteral[base_position[:,2] > 0.6] = 0
+
 
         rew_stand = exp_kernel_1d(velocity[:,:3].norm(dim=1),0.05)*1000
+        rew_stand[~self._landed_buf] = 0
         
 
         rew_stepping = -(self._contact_states - self._last_contact_state).norm(dim=1)*10
@@ -448,16 +461,19 @@ class LandingTask(RLTask):
         joint_acc = (motor_joint_vel - self.last_motor_joint_vel) / self._step_dt
         rew_joint_acc = -((joint_acc.abs()-0.01).clamp(min=0)**2).sum(dim=-1)* 0.00000001# self.rew_scales["r_joint_acc"]
         rew_joint_acc = rew_joint_acc.clamp(min=-20)
-        rew_contact = (self._contact_states==1).all(dim=1).float()*100
-        rew_paw_height = exp_kernel_1d(self._paw_height.mean(dim=1),0.2)*20
-        total_rew = rew_vel + rew_power + rew_survive + rew_collision + rew_joint_acc + rew_contact + rew_paw_height  + rew_ang_vel + rew_base_height + rew_stand
+        rew_contact = (self._contact_states==1).all(dim=1).float()*1
+        rew_paw_height = exp_kernel_1d(self._paw_height.mean(dim=1),0.2)*1
+        
+        
+        total_rew = rew_vel + rew_power + rew_survive + rew_collision + rew_joint_acc + rew_contact + rew_paw_height  + rew_ang_vel + rew_stand + rew_torque + rew_base_height + rew_latteral
 
+        
         self._last_motor_joint_vel = motor_joint_vel.clone()
         self._last_contact_state = self._contact_states.clone()
 
        
         self.rew_buf = total_rew.clone()
-
+        self.extras["rew_torque"] = rew_torque.mean()
         self.extras["rew_stand"] = rew_stand.mean()
         self.extras["rew_orientation"] = rew_orientation.mean()
         self.extras["rew_stepping"] = rew_stepping.mean()
@@ -471,6 +487,7 @@ class LandingTask(RLTask):
         self.extras["rew_ang_vel"] = rew_ang_vel.mean()
         self.extras["rew_base_height"] = rew_base_height.mean()
         self.extras["rew_bounce"] = rew_bounce.mean()
+        self.extras["rew_latteral"] = rew_latteral.mean()
 
 
 
