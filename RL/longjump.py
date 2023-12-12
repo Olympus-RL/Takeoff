@@ -217,7 +217,7 @@ class LongJumpTask(RLTask):
         height = base_position[:, -1]
         self._contact_states, self._collision_buf = self._olympusses.get_contact_state_collisionbuf()
         knee_heights = self._olympusses.get_knee_heights()
-        self._collision_buf = self._collision_buf.logical_or(height < 0.175).logical_or((knee_heights < 0.025).any(dim=1))
+        self._collision_buf = self._collision_buf.logical_or(height < 0.175).logical_or((knee_heights < 0.005).any(dim=1))
         self._paw_height = self._olympusses.get_paw_heights()
         
         
@@ -579,7 +579,7 @@ class LongJumpTask(RLTask):
         self.extras["metrics/est_jump_length_0"] = (self._est_jump_length_buf[terminate_mask.logical_and(self._curriculum_level==0)]).mean()
         self.extras["metrics/est_jump_length_1"] = (self._est_jump_length_buf[terminate_mask.logical_and(self._curriculum_level==1)]).mean()
         self.extras["metrics/est_jump_length_2"] = (self._est_jump_length_buf[terminate_mask.logical_and(self._curriculum_level==2)]).mean()
-        self.extras["est_jump_length_y"] = jump_len_y[terminate_mask].mean()
+        self.extras["est_jump_length_y"] = jump_len_y[terminate_mask].abs().mean()
         self.extras["metrics/min_height"] = self._min_height_buf[terminate_mask].mean()
         self.extras["metrics/max_height"] = self._max_height_buf[terminate_mask].mean()
         self.extras["metrics/len_deviation_0"] = (self._est_jump_length_buf-self._target_lenght)[terminate_mask.logical_and(self._curriculum_level==0)].abs().mean()
@@ -589,7 +589,7 @@ class LongJumpTask(RLTask):
         self.extras["curriculum/level_0_fraq"] = (self._curriculum_level==0).float().mean()
         self.extras["curriculum/level_1_fraq"] = (self._curriculum_level==1).float().mean()
         self.extras["curriculum/level_2_fraq"] = (self._curriculum_level==2).float().mean()
-        self.extras["est_jump_lenght_all"] = self._est_jump_length_buf[terminate_mask].mean()
+        self.extras["len_dev_all"] = (self._est_jump_length_buf-self._target_lenght).abs()[terminate_mask].mean()
         self.extras["spin_at_takeoff"] = ang_velocity[self._takeoff_buf].norm(dim=1).mean()
            
         self.extras["metrics/exit_angle"] = exit_angle[self._takeoff_buf].mean()

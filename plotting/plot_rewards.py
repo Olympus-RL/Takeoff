@@ -3,21 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # List of log directories
-log_path = '/Olympus-ws/Takeoff/runs/HighJump/summaries/events.out.tfevents.1701945094.ntnu08987'
+log_path = '/Olympus-ws/Takeoff/runs/LongJump/summaries/events.out.tfevents.1702396208.ntnu08987'
 event_acc = event_accumulator.EventAccumulator(log_path)
 event_acc.Reload()
-
-log_directories = [
-    '/Olympus-ws/Takeoff/runs/HighJump/summaries/events.out.tfevents.1701945094.ntnu08987',
-]
 
 # Specify the tags for the desired rewards/metrics
 
 data_to_plot = {
     'rewards/iter' : ['Total game reward','Reward'],
-    'metrics/height_deviation_all/iter': ['Height deviation','deviation'],
-    'metrics/exit_angle/iter': ['Exit angle','angle'],
-    'metrics/take_off_ang_vel/iter': ['Take off angular velocity','velocity'],
+    'len_dev_all/iter': ['Len deviation','deviation'],
+    'est_jump_length_y/iter': ['Exit angle','angle'],
+    'spin_at_takeoff/iter': ['Take off angular velocity','velocity'],
     'losses/a_loss' : ['Actor loss','loss'],
     'losses/bounds_loss' : ['Bounds loss','loss'],
     'losses/c_loss' : ['Critic Loss','loss'],
